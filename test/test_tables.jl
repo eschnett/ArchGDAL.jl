@@ -80,6 +80,57 @@ using Tables
             @test collect(field_names) == [:id, :zoom, :location]
         end
 
+        @testset "Canonical field round-trip" begin
+            table = (
+                uint64 = UInt64[typemin(UInt64)],
+                date = [Dates.Date(2026, 8, 27)],
+                time = [Dates.Time(18, 31)],
+                datetime = [Dates.DateTime(2026, 8, 27, 18, 31)],
+                int8list = [Int8[typemin(Int8), typemax(Int8)]],
+                int16list = [Int16[typemin(Int16), typemax(Int16)]],
+                uint16list = [UInt16[typemin(UInt16), typemax(UInt16)]],
+                uint32list = [UInt32[typemin(UInt32), typemax(UInt32)]],
+                float16list = [Float16[typemin(Float16), typemax(Float16)]],
+                float32list = [Float32[typemin(Float32), typemax(Float32)]],
+            )
+            schema = Tables.schema(table)
+
+            AG.create(AG.getdriver("MEMORY")) do dataset
+                layer = AG.createlayer(dataset = dataset, geom = AG.wkbNone)
+                for (name, type) in zip(schema.names, schema.types)
+                    AG.addfielddefn!(
+                        layer,
+                        string(name),
+                        convert(AG.OGRFieldType, type),
+                    )
+                end
+                for row in Tables.rows(table)
+                    AG.addfeature(layer) do feature
+                        for (i, name) in enumerate(schema.names)
+                            AG.setfield!(
+                                feature,
+                                i - 1,
+                                Tables.getcolumn(row, name),
+                            )
+                        end
+                    end
+                end
+
+                result = Tables.columntable(layer)
+                @test only(result.uint64) === Int64(0)
+                @test only(result.date) === Dates.Date(2026, 8, 27)
+                @test only(result.time) === Dates.Time(18, 31)
+                @test only(result.datetime) ===
+                      Dates.DateTime(2026, 8, 27, 18, 31)
+                @test only(result.int8list) == Int32[-128, 127]
+                @test only(result.int16list) == Int32[-32768, 32767]
+                @test only(result.uint16list) == Int32[0, 65535]
+                @test only(result.uint32list) == Int64[0, 4294967295]
+                @test only(result.float16list) == Float64[-Inf, Inf]
+                @test only(result.float32list) == Float64[-Inf, Inf]
+            end
+        end
+
         @testset "Conversion to table for drivers: GeoJSON, ESRI Shapefile" begin
             TEST_DS_DRIVERS_FILE_EXTENSIONS = Dict(
                 "ESRI Shapefile" => "",
@@ -676,14 +727,18 @@ using Tables
             end
 
             @testset "Conversion to table for GPKG driver" begin
+                # The leading `fid` is the FID column, distinct from the
+                # ordinary integer field named `id`.
                 GPKG_test_reference_geotable = (
-                    names = (:geom, :id, :name),
+                    names = (:fid, :geom, :id, :name),
                     types = (
+                        Int64,
                         Union{Missing,AG.IGeometry},
                         Union{Missing,Int64},
                         String,
                     ),
                     values = (
+                        Int64[1, 2, 3, 4],
                         Union{Missing,String}[
                             "LINESTRING (1 2,2 3,3 4)",
                             "MULTILINESTRING ((1 2,2 3,3 4,4 5),(6 7,7 8,8 9,9 10))",
@@ -828,6 +883,228 @@ using Tables
             end
 
             clean_test_dataset_files()
+        end
+    end
+
+    @testset "FID column" begin
+        """
+            gpkg_with(f, dir; options)
+
+        Writes a two-feature point layer to a GPKG in `dir` and reopens it,
+        applying `f` to the resulting layer.
+        """
+        function gpkg_with(f, dir; options = String[])
+            path = joinpath(dir, "fid_test.gpkg")
+            isfile(path) && rm(path)
+            AG.create(path, driver = AG.getdriver("GPKG")) do ds
+                AG.createlayer(
+                    name = "pts",
+                    dataset = ds,
+                    geom = AG.wkbPoint,
+                    options = options,
+                ) do layer
+                    AG.addfielddefn!(layer, "name", AG.OFTString)
+                    for (i, nm) in enumerate(["a", "b"])
+                        AG.addfeature(layer) do feature
+                            AG.setgeom!(
+                                feature,
+                                AG.createpoint(Float64(i), Float64(i)),
+                            )
+                            AG.setfield!(feature, 0, nm)
+                        end
+                    end
+                end
+            end
+            return AG.read(path) do ds
+                f(AG.getlayer(ds, 0))
+            end
+        end
+
+        mktempdir() do dir
+            @testset "Database-like drivers expose the FID" begin
+                gpkg_with(dir) do layer
+                    @test AG.fidcolumnname(layer) == "fid"
+
+                    rows = collect(Tables.rows(layer))
+                    @test Tables.columnnames(rows[1]) == (:fid, :geom, :name)
+                    @test Tables.getcolumn(rows[1], :fid) == 1
+                    @test Tables.getcolumn(rows[2], :fid) == 2
+                    @test [Tables.getcolumn(r, :fid) for r in rows] == [AG.getfid(r) for r in rows]
+
+                    # The FID takes index 1, shifting the other columns past it
+                    @test Tables.getcolumn(rows[1], 1) == 1
+                    @test Tables.getcolumn(rows[1], 2) == "a"
+                    @test AG.toWKT(Tables.getcolumn(rows[1], 3)) ==
+                          "POINT (1 1)"
+
+                    table = Tables.columntable(layer)
+                    @test Tables.columnnames(table) == (:fid, :geom, :name)
+                    @test table.fid == [1, 2]
+                    @test eltype(table.fid) == Int64
+                end
+            end
+
+            @testset "The FID column is named after the driver's" begin
+                gpkg_with(dir, options = ["FID=my_id"]) do layer
+                    @test AG.fidcolumnname(layer) == "my_id"
+                    rows = collect(Tables.rows(layer))
+                    @test Tables.columnnames(rows[1]) == (:my_id, :geom, :name)
+                    @test Tables.getcolumn(rows[1], :my_id) == 1
+                    @test ismissing(Tables.getcolumn(rows[1], :fid))
+                end
+            end
+
+            @testset "Empty layers carry the FID in their schema" begin
+                # Only a featureless layer reports a schema; otherwise it is
+                # built from the rows.
+                empty_gpkg = joinpath(dir, "empty.gpkg")
+                AG.create(empty_gpkg, driver = AG.getdriver("GPKG")) do ds
+                    AG.createlayer(
+                        name = "pts",
+                        dataset = ds,
+                        geom = AG.wkbPoint,
+                    ) do layer
+                        AG.addfielddefn!(layer, "name", AG.OFTString)
+                    end
+                end
+                AG.read(empty_gpkg) do ds
+                    layer = AG.getlayer(ds, 0)
+                    @test AG.nfeature(layer) == 0
+                    @test Tables.schema(layer) == Tables.Schema(
+                        (:fid, :geom, :name),
+                        (Int64, AG.IGeometry{AG.wkbPoint}, String),
+                    )
+                end
+            end
+
+            @testset "A field of the same name hides the FID column" begin
+                # The GeoJSON driver promotes an `id` field to the FID while
+                # still listing `id` as a field, both holding the same value.
+                path = joinpath(dir, "id_field.geojson")
+                isfile(path) && rm(path)
+                AG.create(path, driver = AG.getdriver("GeoJSON")) do ds
+                    AG.createlayer(
+                        name = "l",
+                        dataset = ds,
+                        geom = AG.wkbPoint,
+                    ) do layer
+                        AG.addfielddefn!(layer, "id", AG.OFTInteger)
+                        AG.addfielddefn!(layer, "name", AG.OFTString)
+                        AG.addfeature(layer) do feature
+                            AG.setgeom!(feature, AG.createpoint(1.0, 2.0))
+                            AG.setfield!(feature, 0, 42)
+                            AG.setfield!(feature, 1, "a")
+                        end
+                    end
+                end
+                AG.read(path) do ds
+                    layer = AG.getlayer(ds, 0)
+                    @test AG.fidcolumnname(layer) == "id"
+                    row = first(Tables.rows(layer))
+                    @test AG.getfid(row) == 42
+                    @test AG.getfield(row, :id) == 42
+
+                    # `id` appears once, as the field; duplicating it would
+                    # make `columntable` throw
+                    names = Tables.columnnames(row)
+                    @test names == (Symbol(""), :id, :name)
+                    @test count(==(:id), names) == 1
+                    @test Tables.getcolumn(row, :id) == 42
+                    @test keys(Tables.columntable(layer)) ==
+                          (Symbol(""), :id, :name)
+                end
+            end
+
+            @testset "Drivers without a FID column are unchanged" begin
+                for (drv, ext) in
+                    [("GeoJSON", ".geojson"), ("ESRI Shapefile", ".shp")]
+                    path = joinpath(dir, "nofid$ext")
+                    AG.create(path, driver = AG.getdriver(drv)) do ds
+                        AG.createlayer(
+                            name = "l",
+                            dataset = ds,
+                            geom = AG.wkbPoint,
+                        ) do layer
+                            AG.addfielddefn!(layer, "name", AG.OFTString)
+                            AG.addfeature(layer) do feature
+                                AG.setgeom!(feature, AG.createpoint(1.0, 2.0))
+                                AG.setfield!(feature, 0, "a")
+                            end
+                        end
+                    end
+                    AG.read(path) do ds
+                        layer = AG.getlayer(ds, 0)
+                        @test AG.fidcolumnname(layer) == ""
+                        row = first(Tables.rows(layer))
+                        # The unnamed geometry column keeps its `Symbol("")`
+                        # name rather than resolving to the FID
+                        @test Tables.columnnames(row) == (Symbol(""), :name)
+                        @test Tables.getcolumn(row, 1) == "a"
+                        @test ismissing(Tables.getcolumn(row, :fid))
+                        @test !ismissing(Tables.getcolumn(row, Symbol("")))
+                    end
+                end
+            end
+
+            @testset "Features not read from a layer have no FID column" begin
+                path = joinpath(dir, "detached.gpkg")
+                isfile(path) && rm(path)
+                AG.create(path, driver = AG.getdriver("GPKG")) do ds
+                    AG.createlayer(
+                        name = "pts",
+                        dataset = ds,
+                        geom = AG.wkbPoint,
+                    ) do layer
+                        AG.addfielddefn!(layer, "name", AG.OFTString)
+                        AG.addfeature(layer) do feature
+                            # Being written rather than read, this feature has
+                            # no FID yet (`OGRNullFID`)
+                            @test AG.getfid(feature) == -1
+                            @test :fid ∉ Tables.columnnames(feature)
+                            @test ismissing(Tables.getcolumn(feature, :fid))
+                            AG.setgeom!(feature, AG.createpoint(1.0, 2.0))
+                            AG.setfield!(feature, 0, "a")
+                        end
+                    end
+                end
+
+                # Read back out of the layer it is there, and cloning keeps it
+                AG.read(path) do ds
+                    layer = AG.getlayer(ds, 0)
+                    feature = AG.unsafe_nextfeature(layer)
+                    try
+                        @test Tables.columnnames(feature) ==
+                              (:fid, :geom, :name)
+                        @test Tables.getcolumn(feature, :fid) == 1
+                        cloned = AG.unsafe_clone(feature)
+                        try
+                            @test Tables.columnnames(cloned) ==
+                                  (:fid, :geom, :name)
+                            @test Tables.getcolumn(cloned, :fid) == 1
+                        finally
+                            AG.destroy(cloned)
+                        end
+                    finally
+                        AG.destroy(feature)
+                    end
+                end
+            end
+
+            @testset "Iteration state carries the FID column name" begin
+                gpkg_with(dir) do layer
+                    next = iterate(layer)
+                    @test next !== nothing
+                    feature, state = next
+                    @test state isa Tuple{Int64,Symbol}
+                    @test state == (1, :fid)
+                    @test Tables.getcolumn(feature, :fid) == 1
+
+                    # An integer state still drives iteration
+                    next2 = iterate(layer, 1)
+                    @test next2 !== nothing
+                    @test Tables.getcolumn(next2[1], :fid) == 2
+                end
+            end
         end
     end
 end
