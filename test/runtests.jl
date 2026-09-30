@@ -1,9 +1,8 @@
 using Test
 using Dates
 using GDAL
-#TODO import ArchGDAL
-import ArchGDAL as AG
-using Aqua
+import ArchGDAL
+import Aqua
 
 # ensure all testing files are present
 include("remotefiles.jl")
