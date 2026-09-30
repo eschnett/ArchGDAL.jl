@@ -25,20 +25,33 @@ function getsize(dimension::AbstractDimension)::Int
     return Int(GDAL.gdaldimensiongetsize(dimension))
 end
 
+# These return `nothing` if the dimension has no indexing variable
 function unsafe_getindexingvariable(
     dimension::AbstractDimension,
-)::AbstractMDArray
+)::Union{Nothing,AbstractMDArray}
     @assert !isnull(dimension)
     ptr = GDAL.gdaldimensiongetindexingvariable(dimension)
-    ptr == C_NULL && error("Could not get indexing variable for dimension")
+    ptr == C_NULL && return nothing
     return MDArray(ptr, dimension.dataset)
 end
 
-function getindexingvariable(dimension::AbstractDimension)::AbstractMDArray
+function getindexingvariable(
+    dimension::AbstractDimension,
+)::Union{Nothing,AbstractMDArray}
     @assert !isnull(dimension)
     ptr = GDAL.gdaldimensiongetindexingvariable(dimension)
-    ptr == C_NULL && error("Could not get indexing variable for dimension")
+    ptr == C_NULL && return nothing
     return IMDArray(ptr, dimension.dataset)
+end
+
+# Not generated in context.jl, since there may be nothing to destroy
+function getindexingvariable(f::Function, dimension::AbstractDimension)
+    indexingvariable = unsafe_getindexingvariable(dimension)
+    try
+        return f(indexingvariable)
+    finally
+        isnothing(indexingvariable) || destroy(indexingvariable)
+    end
 end
 
 function setindexingvariable!(

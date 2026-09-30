@@ -304,7 +304,7 @@ end
                 @test AG.getfullname(dimx) == "/group/x"
                 @test AG.gettype(dimx) == ""
                 @test AG.getdirection(dimx) == ""
-                @test_throws ErrorException AG.getindexingvariable(dimx)
+                @test AG.getindexingvariable(dimx) === nothing
                 # TODO: setindexingvariable!
                 # TODO: rename!
 
@@ -525,9 +525,8 @@ end
                                         @test AG.getfullname(dimx) == "/group/x"
                                         @test AG.gettype(dimx) == ""
                                         @test AG.getdirection(dimx) == ""
-                                        @test_throws ErrorException AG.getindexingvariable(
-                                            dimx,
-                                        ) do xvar
+                                        AG.getindexingvariable(dimx) do xvar
+                                            @test xvar === nothing
                                         end
                                         # TODO: setindexingvariable!
                                         # TODO: rename!
@@ -747,9 +746,13 @@ end
             AG.extendeddatatypecreate(Float64),
         )
         AG.write(yvar, [0.0, 1.0, 2.0, 3.0])
+        @test AG.getindexingvariable(dimx) === nothing
         AG.setindexingvariable!(dimx, xvar)
         AG.setindexingvariable!(dimy, yvar)
         @test AG.getname(AG.getindexingvariable(dimx)) == "xvar"
+        AG.getindexingvariable(dimy) do indexingvariable
+            @test AG.getname(indexingvariable) == "yvar"
+        end
 
         AG.subsetdimensionfromselection(root, "/xvar=1") do subset
             AG.openmdarray(subset, "a") do subarray

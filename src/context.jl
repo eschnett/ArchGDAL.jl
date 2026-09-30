@@ -246,7 +246,6 @@ for gdalfunc in (
     :getgeom,
     :getgridded,
     :getindex,
-    :getindexingvariable,
     :getlayer,
     :getmask,
     :getmaskband,
