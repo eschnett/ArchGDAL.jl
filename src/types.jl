@@ -35,17 +35,10 @@ mutable struct CoordTransform
     ptr::GDAL.OGRCoordinateTransformationH
 end
 
-# In the multidim API, underlying files are closed only when all
-# objects potentially pointing to them (groups, arrays, attributes,
-# dimensions) have been released. Their lifetime is not connected with
-# the one of the GDALDataset.
-#
-# To handle this in Julia, each multidim dataset can hold a list of
-# its children. This allows us to "hard close" a dataset when using
-# the interactive API. Being able to close a dataset at a particular
-# time is important when writing.
-#
-# Each child must have a `destroy` function.
+# Multidimensional datasets can track their interactive children
+# (groups, arrays, attributes, dimensions) so that
+# `force_close_mdarray_dataset!` can release them. The field is
+# `nothing` for all other datasets; see `src/mdarray/types.jl`.
 mutable struct Dataset <: AbstractDataset
     ptr::GDAL.GDALDatasetH
     children::Union{Nothing,Vector{WeakRef}}
@@ -64,18 +57,6 @@ mutable struct IDataset <: AbstractDataset
         finalizer(destroy, dataset)
         return dataset
     end
-end
-
-function add_child!(dataset::WeakRef, obj::Any)::Nothing
-    isnull(obj) && return nothing
-    dataset = dataset.value
-    # It is fine if the dataset does not exist any more
-    isnothing(dataset) && return nothing
-    dataset::AbstractDataset
-    @assert !isnull(dataset)
-    isnothing(dataset.children) && return nothing
-    push!(dataset.children, WeakRef(obj))
-    return nothing
 end
 
 mutable struct Driver

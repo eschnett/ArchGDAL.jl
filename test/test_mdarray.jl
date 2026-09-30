@@ -166,7 +166,7 @@ end
 
                 root = AG.getrootgroup(dataset)
                 @test !AG.isnull(root)
-                @test match(r"^ArchGDAL.Group", string(root)) !== nothing
+                @test match(r"^ArchGDAL.IGroup", string(root)) !== nothing
                 rootname = AG.getname(root)
                 @test rootname == "/"
                 rootfullname = AG.getfullname(root)
@@ -235,13 +235,26 @@ end
                 data = Float32[x + 100 * y for x in 1:nx, y in 1:ny]
                 AG.write(mdarray, data)
 
+                # Only interactive objects are tracked by the dataset;
+                # internal and scoped objects must not accumulate there
+                nchildren = length(dataset.children)
+
                 write_attributes(mdarray)
 
                 AG.writemdarray(group, "primes", UInt8[2, 3, 5, 7, 251])
 
+                @test all(size(mdarray) == (nx, ny) for i in 1:100)
+                @test length(dataset.children) == nchildren
+
                 if drivername != "MEM"
-                    err = AG.close(dataset)
-                    @test err == GDAL.CE_None
+                    @test AG.force_close_mdarray_dataset!(dataset) === nothing
+                    @test AG.isnull(dataset)
+                    @test isempty(dataset.children)
+                    # Interactive children have been released
+                    @test AG.isnull(root)
+                    @test AG.isnull(group)
+                    @test AG.isnull(dimx)
+                    @test AG.isnull(mdarray)
                 else
                     memory_dataset = dataset
                 end
@@ -337,8 +350,8 @@ end
                 primes = AG.readmdarray(group, "primes")
                 @test primes == UInt8[2, 3, 5, 7, 251]
 
-                err = AG.close(dataset)
-                @test err == GDAL.CE_None
+                @test AG.force_close_mdarray_dataset!(dataset) === nothing
+                @test AG.isnull(dataset)
 
                 # Trigger all finalizers
                 for i in 1:10

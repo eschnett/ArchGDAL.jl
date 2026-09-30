@@ -6,15 +6,31 @@ function writemdarray(
     value::StridedArray{T,D},
     options::OptionList = nothing,
 )::Nothing where {T<:NumericAttributeType,D}
-    dimensions = AbstractDimension[
-        createdimension(group, "$name.$d", "", "", size(value, d)) for d in 1:D
-    ]
-    extendeddatatypecreate(T) do datatype
-        createmdarray(group, name, dimensions, datatype, options) do mdarray
-            write(mdarray, value)
-            return nothing
+    # These dimensions are only needed while creating the array
+    dimensions = AbstractDimension[]
+    try
+        for d in 1:D
+            push!(
+                dimensions,
+                unsafe_createdimension(
+                    group,
+                    "$name.$d",
+                    "",
+                    "",
+                    size(value, d),
+                ),
+            )
         end
+        extendeddatatypecreate(T) do datatype
+            createmdarray(group, name, dimensions, datatype, options) do mdarray
+                write(mdarray, value)
+                return nothing
+            end
+        end
+    finally
+        destroy(dimensions)
     end
+    return nothing
 end
 
 function readmdarray(

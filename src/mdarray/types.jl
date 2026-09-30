@@ -20,6 +20,34 @@ abstract type AbstractDimension end
 
 ################################################################################
 
+# In the multidim API, objects obtained from a dataset (groups, arrays,
+# attributes, dimensions) keep the underlying file open and can be used
+# after the dataset has been closed; see "Objects lifetime" in
+# <https://gdal.org/en/stable/user/multidim_raster_data_model.html>.
+# A file being written is therefore only complete once all of these
+# objects have been released.
+#
+# Interactive objects are released by the garbage collector, i.e. at an
+# unpredictable time. To be able to close a dataset at a well-defined
+# time, multidim datasets (`dataset.children !== nothing`) keep weak
+# references to their interactive children, and
+# `force_close_mdarray_dataset!` destroys them before closing the
+# dataset. Scoped objects (`unsafe_*`, do-blocks) are released
+# explicitly and are not tracked.
+function _add_mdarray_child!(dataset::WeakRef, obj::Any)::Nothing
+    isnull(obj) && return nothing
+    dataset = dataset.value
+    # It is fine if the dataset does not exist any more
+    isnothing(dataset) && return nothing
+    dataset::AbstractDataset
+    @assert !isnull(dataset)
+    isnothing(dataset.children) && return nothing
+    push!(dataset.children, WeakRef(obj))
+    return nothing
+end
+
+################################################################################
+
 mutable struct ExtendedDataType <: AbstractExtendedDataType
     ptr::GDAL.GDALExtendedDataTypeH
 
@@ -58,7 +86,6 @@ mutable struct Group <: AbstractGroup
 
     function Group(ptr::GDAL.GDALGroupH, dataset::WeakRef)
         group = new(ptr, dataset)
-        add_child!(dataset, group)
         return group
     end
 end
@@ -69,7 +96,7 @@ mutable struct IGroup <: AbstractGroup
 
     function IGroup(ptr::GDAL.GDALGroupH, dataset::WeakRef)
         group = new(ptr, dataset)
-        add_child!(dataset, group)
+        _add_mdarray_child!(dataset, group)
         ptr != C_NULL && finalizer(destroy, group)
         return group
     end
@@ -83,7 +110,6 @@ mutable struct MDArray{T,D} <: AbstractMDArray{T,D}
         T::Type
         D::Int
         mdarray = new{T,D}(ptr, dataset)
-        add_child!(dataset, mdarray)
         return mdarray
     end
 end
@@ -96,7 +122,7 @@ mutable struct IMDArray{T,D} <: AbstractMDArray{T,D}
         T::Type
         D::Int
         mdarray = new{T,D}(ptr, dataset)
-        add_child!(dataset, mdarray)
+        _add_mdarray_child!(dataset, mdarray)
         ptr != C_NULL && finalizer(destroy, mdarray)
         return mdarray
     end
@@ -108,7 +134,6 @@ mutable struct Attribute <: AbstractAttribute
 
     function Attribute(ptr::GDAL.GDALAttributeH, dataset::WeakRef)
         attribute = new(ptr, dataset)
-        add_child!(dataset, attribute)
         return attribute
     end
 end
@@ -119,7 +144,7 @@ mutable struct IAttribute <: AbstractAttribute
 
     function IAttribute(ptr::GDAL.GDALAttributeH, dataset::WeakRef)
         attribute = new(ptr, dataset)
-        add_child!(dataset, attribute)
+        _add_mdarray_child!(dataset, attribute)
         ptr != C_NULL && finalizer(destroy, attribute)
         return attribute
     end
@@ -131,7 +156,6 @@ mutable struct Dimension <: AbstractDimension
 
     function Dimension(ptr::GDAL.GDALDimensionH, dataset::WeakRef)
         dimension = new(ptr, dataset)
-        add_child!(dataset, dimension)
         return dimension
     end
 end
@@ -142,7 +166,7 @@ mutable struct IDimension <: AbstractDimension
 
     function IDimension(ptr::GDAL.GDALDimensionH, dataset::WeakRef)
         dimension = new(ptr, dataset)
-        add_child!(dataset, dimension)
+        _add_mdarray_child!(dataset, dimension)
         ptr != C_NULL && finalizer(destroy, dimension)
         return dimension
     end
