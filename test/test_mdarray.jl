@@ -268,13 +268,13 @@ end
 
             @testset "reading" begin
                 if drivername != "MEM"
-                    dataset = AG.open(
-                        filename,
-                        AG.OF_MULTIDIM_RASTER | AG.OF_READONLY | AG.OF_SHARED | AG.OF_VERBOSE_ERROR,
-                        nothing,
-                        nothing,
-                        nothing,
+                    dataset = AG.openmultidimensional(
+                        filename;
+                        flags = AG.OF_READONLY | AG.OF_SHARED |
+                                AG.OF_VERBOSE_ERROR,
                     )
+                    # Read-only datasets do not track their children
+                    @test dataset.children === nothing
                 else
                     dataset = memory_dataset
                 end
@@ -487,13 +487,10 @@ end
 
             if drivername != "MEM"
                 @testset "reading" begin
-                    AG.open(
-                        filename,
-                        AG.OF_MULTIDIM_RASTER | AG.OF_READONLY | AG.OF_SHARED |
-                        AG.OF_VERBOSE_ERROR,
-                        nothing,
-                        nothing,
-                        nothing,
+                    AG.openmultidimensional(
+                        filename;
+                        flags = AG.OF_READONLY | AG.OF_SHARED |
+                                AG.OF_VERBOSE_ERROR,
                     ) do dataset
                         @test !AG.isnull(dataset)
 
@@ -864,5 +861,49 @@ end
             end
         end
     end
+    rm(filename; force = true)
+end
+
+@testset "test_mdarray.jl: openmultidimensional" begin
+    filename = tempname() * ".nc"
+    AG.createmultidimensional(AG.getdriver("netCDF"), filename) do dataset
+        AG.getrootgroup(dataset) do root
+            AG.writemdarray(root, "values", Float32[1, 2, 3])
+            return nothing
+        end
+    end
+
+    # Opening for writing tracks interactive children, so that the
+    # file is complete after `force_close_mdarray_dataset!`
+    dataset = AG.openmultidimensional(filename; update = true)
+    @test dataset.children !== nothing
+    root = AG.getrootgroup(dataset)
+    mdarray = AG.openmdarray(root, "values")
+    mdarray[2] = 20
+    @test AG.force_close_mdarray_dataset!(dataset) === nothing
+    @test AG.isnull(root)
+    @test AG.isnull(mdarray)
+
+    AG.openmultidimensional(filename; alloweddrivers = ["netCDF"]) do dataset
+        @test dataset.children === nothing
+        AG.getrootgroup(dataset) do root
+            @test AG.readmdarray(root, "values") == Float32[1, 20, 3]
+        end
+    end
+
+    # Tracking can be enabled explicitly, and plain integer flags work
+    AG.openmultidimensional(
+        filename;
+        flags = Int(AG.OF_VERBOSE_ERROR),
+        hard_close = true,
+    ) do dataset
+        @test dataset.children !== nothing
+    end
+
+    # Other drivers are rejected when requested
+    @test_throws GDAL.GDALError AG.openmultidimensional(
+        filename;
+        alloweddrivers = ["Zarr"],
+    )
     rm(filename; force = true)
 end

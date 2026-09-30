@@ -40,55 +40,108 @@ function createmultidimensional(
     )
 end
 
-function unsafe_open(
+function _openmultidimensional(
+    constructor::Type{<:AbstractDataset},
     filename::AbstractString,
-    openflags::Integer,
+    update::Bool,
+    flags,
     alloweddrivers::OptionList,
-    openoptions::OptionList,
+    options::OptionList,
     siblingfiles::OptionList,
-    hard_close::Union{Nothing,Bool} = nothing,
+    hard_close::Union{Nothing,Bool},
 )::AbstractDataset
+    openflags = UInt32(flags) | UInt32(OF_MULTIDIM_RASTER)
+    update && (openflags |= UInt32(OF_UPDATE))
+    # By default, track the children of writable datasets so that they
+    # can be closed with `force_close_mdarray_dataset!`
     if isnothing(hard_close)
-        # We hard-close the dataset if it is a writable multidim dataset
-        hard_close =
-            (openflags & OF_MULTIDIM_RASTER != 0) &&
-            (openflags & OF_UPDATE != 0)
+        hard_close = openflags & UInt32(OF_UPDATE) != 0
     end
-    return Dataset(
+    return constructor(
         GDAL.gdalopenex(
             filename,
             openflags,
             CSLConstListWrapper(alloweddrivers),
-            CSLConstListWrapper(openoptions),
+            CSLConstListWrapper(options),
             CSLConstListWrapper(siblingfiles),
-        ),
+        );
         hard_close = hard_close,
     )
 end
 
-function open(
-    filename::AbstractString,
-    openflags::Integer,
-    alloweddrivers::OptionList,
-    openoptions::OptionList,
-    siblingfiles::OptionList,
+function unsafe_openmultidimensional(
+    filename::AbstractString;
+    update::Bool = false,
+    flags = OF_READONLY,
+    alloweddrivers::OptionList = nothing,
+    options::OptionList = nothing,
+    siblingfiles::OptionList = nothing,
     hard_close::Union{Nothing,Bool} = nothing,
 )::AbstractDataset
-    if isnothing(hard_close)
-        # We hard-close the dataset if it is a writable multidim dataset
-        hard_close =
-            (openflags & OF_MULTIDIM_RASTER != 0) &&
-            (openflags & OF_UPDATE != 0)
+    return _openmultidimensional(
+        Dataset,
+        filename,
+        update,
+        flags,
+        alloweddrivers,
+        options,
+        siblingfiles,
+        hard_close,
+    )
+end
+
+"""
+    openmultidimensional(filename; update=false, flags=OF_READONLY|OF_VERBOSE_ERROR,
+                         alloweddrivers, options, siblingfiles, hard_close)
+
+Open a multidimensional dataset.
+
+### Parameters
+* `filename`: the name of the file to open.
+
+### Keyword Arguments
+* `update`: open the dataset for writing (adds `OF_UPDATE`).
+* `flags`: additional `OF_*` flags, combined with `|`. `OF_MULTIDIM_RASTER`
+  is always added.
+* `alloweddrivers`: short names of the drivers that may be used, or
+  `nothing` for all drivers.
+* `options`: driver-specific open options (`"NAME=VALUE"`), or `nothing`.
+* `siblingfiles`: the files next to `filename`, or `nothing` to let GDAL
+  look them up.
+* `hard_close`: whether the dataset tracks its interactive children, so
+  that `force_close_mdarray_dataset!` can release them. Defaults to
+  `true` for datasets opened for writing.
+
+### Returns
+The corresponding dataset.
+
+### Example
+```julia
+openmultidimensional(filename; update = true) do dataset
+    getrootgroup(dataset) do root
+        writemdarray(root, "values", Float32[1, 2, 3])
     end
-    return IDataset(
-        GDAL.gdalopenex(
-            filename,
-            openflags,
-            CSLConstListWrapper(alloweddrivers),
-            CSLConstListWrapper(openoptions),
-            CSLConstListWrapper(siblingfiles),
-        ),
-        hard_close = hard_close,
+end
+```
+"""
+function openmultidimensional(
+    filename::AbstractString;
+    update::Bool = false,
+    flags = OF_READONLY | OF_VERBOSE_ERROR,
+    alloweddrivers::OptionList = nothing,
+    options::OptionList = nothing,
+    siblingfiles::OptionList = nothing,
+    hard_close::Union{Nothing,Bool} = nothing,
+)::AbstractDataset
+    return _openmultidimensional(
+        IDataset,
+        filename,
+        update,
+        flags,
+        alloweddrivers,
+        options,
+        siblingfiles,
+        hard_close,
     )
 end
 
