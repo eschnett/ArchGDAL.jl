@@ -41,6 +41,13 @@ Modules = [ArchGDAL]
 Pages   = ["array.jl", "colortable.jl", "rasterattributetable.jl", "rasterband.jl", "rasterio.jl"]
 ```
 
+## [Multidimensional Arrays](@id API-Multidimensional-Arrays)
+
+```@autodocs
+Modules = [ArchGDAL]
+Pages   = ["mdarray/attribute.jl", "mdarray/dimension.jl", "mdarray/extendeddatatype.jl", "mdarray/global.jl", "mdarray/group.jl", "mdarray/highlevel.jl", "mdarray/mdarray.jl", "mdarray/types.jl"]
+```
+
 ## [Spatial Projections](@id API-Spatial-Projections)
 
 ```@autodocs
