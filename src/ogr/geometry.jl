@@ -202,7 +202,11 @@ function forceto(
     options = StringList(C_NULL),
 )::IGeometry
     return IGeometry(
-        GDAL.ogr_g_forceto(unsafe_clone(geom), targettype, options),
+        GDAL.ogr_g_forceto(
+            unsafe_clone(geom),
+            targettype,
+            _stringlist(options),
+        ),
     )
 end
 
@@ -211,7 +215,13 @@ function unsafe_forceto(
     targettype::OGRwkbGeometryType,
     options = StringList(C_NULL),
 )::Geometry
-    return Geometry(GDAL.ogr_g_forceto(unsafe_clone(geom), targettype, options))
+    return Geometry(
+        GDAL.ogr_g_forceto(
+            unsafe_clone(geom),
+            targettype,
+            _stringlist(options),
+        ),
+    )
 end
 
 """
@@ -469,7 +479,7 @@ toJSON(geom::AbstractGeometry; kwargs...)::String =
     GDAL.ogr_g_exporttojsonex(geom, String["$k=$v" for (k, v) in kwargs])
 
 toJSON(geom::AbstractGeometry, options::Vector{String})::String =
-    GDAL.ogr_g_exporttojsonex(geom, options)
+    GDAL.ogr_g_exporttojsonex(geom, _stringlist(options))
 
 """
     fromJSON(data::String)
@@ -1589,7 +1599,9 @@ function lineargeom(
     options::Vector{String},
     stepsize::Real = 0,
 )::IGeometry
-    return IGeometry(GDAL.ogr_g_getlineargeometry(geom, stepsize, options))
+    return IGeometry(
+        GDAL.ogr_g_getlineargeometry(geom, stepsize, _stringlist(options)),
+    )
 end
 
 function unsafe_lineargeom(
@@ -1597,7 +1609,9 @@ function unsafe_lineargeom(
     options::Vector{String},
     stepsize::Real = 0,
 )::Geometry
-    return Geometry(GDAL.ogr_g_getlineargeometry(geom, stepsize, options))
+    return Geometry(
+        GDAL.ogr_g_getlineargeometry(geom, stepsize, _stringlist(options)),
+    )
 end
 
 """
