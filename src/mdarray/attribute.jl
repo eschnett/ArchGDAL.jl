@@ -24,7 +24,7 @@ function getdimensionssize(attribute::AbstractAttribute)::NTuple{<:Any,Int}
     @assert !isnull(attribute)
     count = Ref{Csize_t}()
     sizeptr = GDAL.gdalattributegetdimensionssize(attribute, count)
-    size = reverse(ntuple(d -> Int(unsafe_load(sizeptr, d), count[])))
+    size = reverse(ntuple(d -> Int(unsafe_load(sizeptr, d)), count[]))
     GDAL.vsifree(sizeptr)
     return size
 end
@@ -34,7 +34,7 @@ function readasraw(attribute::AbstractAttribute)::AbstractVector{UInt8}
     count = Ref{Csize_t}()
     rawptr = GDAL.gdalattributereadasraw(attribute, count)
     raw = UInt8[unsafe_load(rawptr, n) for n in 1:count[]]
-    GDAL.gdalattributefreerawresult(rawptr, count[])
+    GDAL.gdalattributefreerawresult(attribute, rawptr, count[])
     return raw
 end
 
@@ -170,35 +170,7 @@ end
 
 Base.ndims(attribute::AbstractAttribute)::Int = getdimensioncount(attribute)
 
-function getdimensions(
-    attribute::AbstractAttribute,
-)::AbstractVector{<:AbstractDimension}
-    @assert !isnull(attribute)
-    dimensionscountref = Ref{Csize_t}()
-    dimensionshptr =
-        GDAL.gdalattributegetdimensions(attribute, dimensionscountref)
-    dimensions = AbstractDimension[
-        IDimension(unsafe_load(dimensionshptr, d), attribute.dataset) for
-        d in dimensionscountref[]:-1:1
-    ]
-    GDAL.vsifree(dimensionshptr)
-    return dimensions
-end
-
-function unsafe_getdimensions(
-    attribute::AbstractAttribute,
-)::AbstractVector{<:AbstractDimension}
-    @assert !isnull(attribute)
-    dimensionscountref = Ref{Csize_t}()
-    dimensionshptr =
-        GDAL.gdalattributegetdimensions(attribute, dimensionscountref)
-    dimensions = AbstractDimension[
-        Dimension(unsafe_load(dimensionshptr, d), attribute.dataset) for
-        d in dimensionscountref[]:-1:1
-    ]
-    GDAL.vsifree(dimensionshptr)
-    return dimensions
-end
+# getdimensions: not available in the C API
 
 function unsafe_getdatatype(
     attribute::AbstractAttribute,
@@ -212,37 +184,7 @@ function getdatatype(attribute::AbstractAttribute)::AbstractExtendedDataType
     return IExtendedDataType(GDAL.gdalattributegetdatatype(attribute))
 end
 
-function getblocksize(
-    attribute::AbstractAttribute,
-    options::OptionList = nothing,
-)::NTuple{<:Any,Int}
-    @assert !isnull(attribute)
-    count = Ref{Csize_t}()
-    blocksizeptr = GDAL.gdalattributegetblocksize(
-        attribute,
-        count,
-        CSLConstListWrapper(options),
-    )
-    blocksize = reverse(ntuple(d -> Int(unsafe_load(blocksizeptr, d)), count[]))
-    GDAL.vsifree(blocksizeptr)
-    return blocksize
-end
-
-function getprocessingchunksize(
-    attribute::AbstractAttribute,
-    maxchunkmemory::Integer,
-)::NTuple{<:AnyInt}
-    @assert !isnull(attribute)
-    count = Ref{Csize_t}()
-    chunksizeptr = GDAL.gdalattributegetprocessingchunksize(
-        attribute,
-        count,
-        maxchunkmemory,
-    )
-    chunksize = reverse(ntuple(d -> Int(unsafe_load(chunksizeptr, d)), count[]))
-    GDAL.vsifree(chunksizeptr)
-    return chunksize
-end
+# getblocksize, getprocessingchunksize: not available in the C API
 
 # processperchunk
 

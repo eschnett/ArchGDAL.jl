@@ -81,18 +81,7 @@ function canconvertto(
     return Bool(GDAL.gdalextendeddatatypecanconvertto(sourceedt, targetedt))
 end
 
-# TODO: automate this
-function needsfreedynamicmemory(edt::AbstractExtendedDataType)::Bool
-    return Bool(GDAL.gdalextendeddatatypeneedsfreedynamicmemory(edt))
-end
-
-function freedynamicmemory(
-    edt::AbstractExtendedDataType,
-    buffer::Ptr{Cvoid},
-)::Nothing
-    GDAL.gdalextendeddatatypefreedynamicmemory(edt, buffer)
-    return nothing
-end
+# needsfreedynamicmemory, freedynamicmemory: not available in the C API
 
 ################################################################################
 
@@ -136,20 +125,20 @@ end
 
 function getname(comp::AbstractEDTComponent)::AbstractString
     @assert !isnull(comp)
-    return GDAL.gdaledtcomponenttgetname(comp)
+    return GDAL.gdaledtcomponentgetname(comp)
 end
 
 function getoffset(comp::AbstractEDTComponent)::Int
     @assert !isnull(comp)
-    return Int(GDAL.gdaledtcomponenttgetoffset(comp))
+    return Int(GDAL.gdaledtcomponentgetoffset(comp))
 end
 
 function unsafe_gettype(comp::AbstractEDTComponent)::AbstractExtendedDataType
     @assert !isnull(comp)
-    return ExtendedDatatType(GDAL.gdaledtcomponenttgettype(comp))
+    return ExtendedDataType(GDAL.gdaledtcomponentgettype(comp))
 end
 
 function gettype(comp::AbstractEDTComponent)::AbstractExtendedDataType
     @assert !isnull(comp)
-    return IExtendedDatatType(GDAL.gdaledtcomponenttgettype(comp))
+    return IExtendedDataType(GDAL.gdaledtcomponentgettype(comp))
 end

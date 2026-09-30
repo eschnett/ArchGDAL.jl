@@ -81,33 +81,8 @@ function getvectorlayernames(
     )
 end
 
-function unsafe_openvectorlayer(
-    group::AbstractGroup,
-    options::OptionList = nothing,
-)::AbstractFeatureLayer
-    @assert !isnull(group)
-    # TODO: Find out how to set `ownedby` and `spatialref`, probably by querying `group`
-    # TODO: Store dataset
-    return FeatureLayer(
-        GDAL.openvectorlayer(group, CSLConstListWrapper(options)),
-        ownedby,
-        spatialref,
-    )
-end
-
-function openvectorlayer(
-    group::AbstractGroup,
-    options::OptionList = nothing,
-)::AbstractFeatureLayer
-    @assert !isnull(group)
-    # TODO: Find out how to set `ownedby` and `spatialref`, probably by querying `group`
-    # TODO: Store dataset
-    return IFeatureLayer(
-        GDAL.openvectorlayer(group, CSLConstListWrapper(options)),
-        ownedby,
-        spatialref,
-    )
-end
+# openvectorlayer: not wrapped yet. The layer's lifetime is tied to the
+# group, which `FeatureLayer` (owned by a dataset) cannot express.
 
 function unsafe_getdimensions(
     group::AbstractGroup,
@@ -405,7 +380,7 @@ end
 
 # clearstatistics
 
-function rename(group::AbstractGroup, newname::AbstractString)::Bool
+function rename!(group::AbstractGroup, newname::AbstractString)::Bool
     @assert !isnull(group)
     return GDAL.gdalgrouprename(group, newname)
 end

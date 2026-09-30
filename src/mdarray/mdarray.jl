@@ -27,10 +27,7 @@ end
 # Base.iswritable(mdarray::AbstractMDArray)::Bool = iswritable(mdarray)
 # Base.isreadonly(mdarray::AbstractMDArray)::Bool = !iswritable(mdarray)
 
-function getfilename(mdarray::AbstractMDArray)::AbstractString
-    @assert !isnull(mdarray)
-    return GDAL.gdalmdarraygetfilename(mdarray)
-end
+# getfilename: not available in the C API
 
 function getstructuralinfo(
     mdarray::AbstractMDArray,
@@ -73,27 +70,27 @@ function getrawnodatavalueasdouble(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Float64}
     @assert !isnull(mdarray)
-    hasnodata = Ref{Cbool}()
+    hasnodata = Ref{Cint}()
     nodatavalue = GDAL.gdalmdarraygetnodatavalueasdouble(mdarray, hasnodata)
-    return hasnodata[] ? nodatavalue : nothing
+    return hasnodata[] != 0 ? nodatavalue : nothing
 end
 
 function getrawnodatavalueasint64(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Int64}
     @assert !isnull(mdarray)
-    hasnodata = Ref{Cbool}()
+    hasnodata = Ref{Cint}()
     nodatavalue = GDAL.gdalmdarraygetnodatavalueasint64(mdarray, hasnodata)
-    return hasnodata[] ? nodatavalue : nothing
+    return hasnodata[] != 0 ? nodatavalue : nothing
 end
 
 function getrawnodatavalueasuint64(
     mdarray::AbstractMDArray,
 )::Union{Nothing,UInt64}
     @assert !isnull(mdarray)
-    hasnodata = Ref{Cbool}()
+    hasnodata = Ref{Cint}()
     nodatavalue = GDAL.gdalmdarraygetnodatavalueasuint64(mdarray, hasnodata)
-    return hasnodata[] ? nodatavalue : nothing
+    return hasnodata[] != 0 ? nodatavalue : nothing
 end
 
 function getnodatavalue(::Type{Float64}, mdarray::AbstractMDArray)
@@ -133,81 +130,83 @@ function setnodatavalue!(mdarray::AbstractMDArray, nodata::UInt64)::Bool
 end
 
 function resize!(
-    mdarray::AbstractMDArray,
+    mdarray::AbstractMDArray{<:Any,D},
     newdimsizes::VectorLike{<:Integer},
     options::OptionList = nothing,
-)::Bool
+)::Bool where {D}
     @assert !isnull(mdarray)
+    @assert length(newdimsizes) == D
+    gdal_newdimsizes = UInt64[newdimsizes[d] for d in D:-1:1]
     return GDAL.gdalmdarrayresize(
         mdarray,
-        newdimsizes,
+        gdal_newdimsizes,
         CSLConstListWrapper(options),
     )
 end
 
 function getoffset(mdarray::AbstractMDArray)::Union{Nothing,Float64}
     @assert !isnull(mdarray)
-    hasoffset = Ref{Cbool}()
+    hasoffset = Ref{Cint}()
     offset = GDAL.gdalmdarraygetoffset(mdarray, hasoffset)
-    return hasoffset[] ? offset : nothing
+    return hasoffset[] != 0 ? offset : nothing
 end
 
 function getoffsetex(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Tuple{Float64,Type}}
     @assert !isnull(mdarray)
-    hasoffset = Ref{Cbool}()
+    hasoffset = Ref{Cint}()
     storagetyperef = Ref{GDAL.GDALDataType}()
     offset = GDAL.gdalmdarraygetoffsetex(mdarray, hasoffset, storagetyperef)
-    !hasoffset[] && return nothing
-    storagetype = convert(Type, storagetyperef[])
+    hasoffset[] == 0 && return nothing
+    storagetype = convert(DataType, convert(GDALDataType, storagetyperef[]))
     return offset, storagetype
 end
 
 function getscale(mdarray::AbstractMDArray)::Union{Nothing,Float64}
     @assert !isnull(mdarray)
-    hasscale = Ref{Cbool}()
+    hasscale = Ref{Cint}()
     scale = GDAL.gdalmdarraygetscale(mdarray, hasscale)
-    return hasscale[] ? scale : nothing
+    return hasscale[] != 0 ? scale : nothing
 end
 
 function getscaleex(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Tuple{Float64,Type}}
     @assert !isnull(mdarray)
-    hasscale = Ref{Cbool}()
+    hasscale = Ref{Cint}()
     storagetyperef = Ref{GDAL.GDALDataType}()
     scale = GDAL.gdalmdarraygetscaleex(mdarray, hasscale, storagetyperef)
-    !hasscale[] && return nothing
-    storagetype = convert(Type, storagetyperef[])
+    hasscale[] == 0 && return nothing
+    storagetype = convert(DataType, convert(GDALDataType, storagetyperef[]))
     return scale, storagetype
 end
 
 function setoffset!(
     mdarray::AbstractMDArray,
     offset::Float64,
-    storagetype::Union{Type,Nothing},
+    storagetype::Union{Type,Nothing} = nothing,
 )::Bool
     @assert !isnull(mdarray)
-    return GDAL.gdalmdarraysetoffset(
+    return GDAL.gdalmdarraysetoffsetex(
         mdarray,
         offset,
         isnothing(storagetype) ? GDAL.GDT_Unknown :
-        convert(GDAL.GDALDataType, storagetype),
+        convert(GDAL.GDALDataType, convert(GDALDataType, storagetype)),
     )
 end
 
 function setscale!(
     mdarray::AbstractMDArray,
-    offset::Float64,
-    storagetype::Union{Type,Nothing},
+    scale::Float64,
+    storagetype::Union{Type,Nothing} = nothing,
 )::Bool
     @assert !isnull(mdarray)
-    return GDAL.gdalmdarraysetscale(
+    return GDAL.gdalmdarraysetscaleex(
         mdarray,
-        offset,
+        scale,
         isnothing(storagetype) ? GDAL.GDT_Unknown :
-        convert(GDAL.GDALDataType, storagetype),
+        convert(GDAL.GDALDataType, convert(GDALDataType, storagetype)),
     )
 end
 
@@ -217,7 +216,7 @@ function unsafe_getview(
 )::AbstractMDArray
     @assert !isnull(mdarray)
     ptr = GDAL.gdalmdarraygetview(mdarray, viewexpr)
-    ptr == C_NULL && error("Could not get view \"$vierexpr\"")
+    ptr == C_NULL && error("Could not get view \"$viewexpr\"")
     return MDArray(ptr, mdarray.dataset)
 end
 
@@ -227,7 +226,7 @@ function getview(
 )::AbstractMDArray
     @assert !isnull(mdarray)
     ptr = GDAL.gdalmdarraygetview(mdarray, viewexpr)
-    ptr == C_NULL && error("Could not get view \"$vierexpr\"")
+    ptr == C_NULL && error("Could not get view \"$viewexpr\"")
     return IMDArray(ptr, mdarray.dataset)
 end
 
@@ -267,51 +266,45 @@ function getindex(
     return getview(mdarray, viewexpr)
 end
 
-# TODO: Return a `LinearAlgebra.Adjoint` instead?
-function unsafe_transpose(mdarray::AbstractMDArray)::AbstractMDArray
+# `perm[k]` is the (1-based, Julia order) axis of `mdarray` that becomes
+# axis `k` of the result, as for `permutedims`. The default reverses
+# all axes.
+function unsafe_transpose(
+    mdarray::AbstractMDArray{<:Any,D},
+    perm::VectorLike{<:Integer} = D:-1:1,
+)::AbstractMDArray where {D}
     @assert !isnull(mdarray)
-    ptr = GDAL.gdalmdarraytranspose(mdarray)
+    N = length(perm)
+    @assert all(1 <= p <= D for p in perm)
+    gdal_perm = Cint[D - perm[N-i] for i in 0:(N-1)]
+    ptr = GDAL.gdalmdarraytranspose(mdarray, N, gdal_perm)
     ptr == C_NULL && error("Could not transpose mdarray")
     return MDArray(ptr, mdarray.dataset)
 end
 
-function transpose(mdarray::AbstractMDArray)::AbstractMDArray
+function transpose(
+    mdarray::AbstractMDArray{<:Any,D},
+    perm::VectorLike{<:Integer} = D:-1:1,
+)::AbstractMDArray where {D}
     @assert !isnull(mdarray)
-    ptr = GDAL.gdalmdarraytranspose(mdarray)
+    N = length(perm)
+    @assert all(1 <= p <= D for p in perm)
+    gdal_perm = Cint[D - perm[N-i] for i in 0:(N-1)]
+    ptr = GDAL.gdalmdarraytranspose(mdarray, N, gdal_perm)
     ptr == C_NULL && error("Could not transpose mdarray")
     return IMDArray(ptr, mdarray.dataset)
 end
 
-function unsafe_getunscaled(
-    mdarray::AbstractMDArray,
-    overriddenscale = Float64(NaN),
-    overriddenoffset = Float64(NaN),
-    overriddendstnodata = Float64(NaN),
-)::AbstractMDArray
+function unsafe_getunscaled(mdarray::AbstractMDArray)::AbstractMDArray
     @assert !isnull(mdarray)
-    ptr = GDAL.gdalmdarraygetunscaled(
-        mdarray,
-        overriddenscale,
-        overriddenoffset,
-        overriddendstnodata,
-    )
+    ptr = GDAL.gdalmdarraygetunscaled(mdarray)
     ptr == C_NULL && error("Could not get unscaled mdarray")
     return MDArray(ptr, mdarray.dataset)
 end
 
-function getunscaled(
-    mdarray::AbstractMDArray,
-    overriddenscale = Float64(NaN),
-    overriddenoffset = Float64(NaN),
-    overriddendstnodata = Float64(NaN),
-)::AbstractMDArray
+function getunscaled(mdarray::AbstractMDArray)::AbstractMDArray
     @assert !isnull(mdarray)
-    ptr = GDAL.gdalmdarraygetunscaled(
-        mdarray,
-        overriddenscale,
-        overriddenoffset,
-        overriddendstnodata,
-    )
+    ptr = GDAL.gdalmdarraygetunscaled(mdarray)
     ptr == C_NULL && error("Could not get unscaled mdarray")
     return IMDArray(ptr, mdarray.dataset)
 end
@@ -338,17 +331,20 @@ end
 
 # TODO: Wrap GDAL.GDALRIOResampleAlg
 function unsafe_getresampled(
-    mdarray::AbstractMDArray,
+    mdarray::AbstractMDArray{<:Any,D},
     newdims::Union{Nothing,VectorLike{<:AbstractDimension}},
     resamplealg::GDAL.GDALRIOResampleAlg,
     targetsrs::Union{Nothing,AbstractSpatialRef},
     options::OptionList = nothing,
-)::AbstractMDArray
+)::AbstractMDArray where {D}
     @assert !isnull(mdarray)
+    @assert isnothing(newdims) || length(newdims) == D
     ptr = GDAL.gdalmdarraygetresampled(
         mdarray,
-        isnothing(newdims) ? 0 : length(newdims),
-        isnothing(newdims) ? C_NULL : DimensionHList(reverse(newdims)),
+        D,
+        # A null dimension handle keeps the corresponding dimension
+        isnothing(newdims) ? GDAL.GDALDimensionH[C_NULL for d in 1:D] :
+        DimensionHList(reverse(newdims)),
         resamplealg,
         isnothing(targetsrs) ? C_NULL : targetsrs,
         CSLConstListWrapper(options),
@@ -358,17 +354,20 @@ function unsafe_getresampled(
 end
 
 function getresampled(
-    mdarray::AbstractMDArray,
+    mdarray::AbstractMDArray{<:Any,D},
     newdims::Union{Nothing,VectorLike{<:AbstractDimension}},
     resamplealg::GDAL.GDALRIOResampleAlg,
     targetsrs::Union{Nothing,AbstractSpatialRef},
     options::OptionList = nothing,
-)::AbstractMDArray
+)::AbstractMDArray where {D}
     @assert !isnull(mdarray)
+    @assert isnothing(newdims) || length(newdims) == D
     ptr = GDAL.gdalmdarraygetresampled(
         mdarray,
-        isnothing(newdims) ? 0 : length(newdims),
-        isnothing(newdims) ? C_NULL : DimensionHList(reverse(newdims)),
+        D,
+        # A null dimension handle keeps the corresponding dimension
+        isnothing(newdims) ? GDAL.GDALDimensionH[C_NULL for d in 1:D] :
+        DimensionHList(reverse(newdims)),
         resamplealg,
         isnothing(targetsrs) ? C_NULL : targetsrs,
         CSLConstListWrapper(options),
@@ -419,40 +418,46 @@ function getgridded(
     return IMDArray(ptr, mdarray.dataset)
 end
 
+# `xdim` and `ydim` are 1-based axes in Julia order
 function unsafe_asclassicdataset(
-    mdarray::AbstractMDArray,
+    mdarray::AbstractMDArray{<:Any,D},
     xdim::Integer,
     ydim::Integer,
     rootgroup::Union{Nothing,AbstractGroup} = nothing,
     options::OptionList = nothing,
-)::AbstractDataset
+)::AbstractDataset where {D}
     @assert !isnull(mdarray)
+    @assert 1 <= xdim <= D
+    @assert 1 <= ydim <= D
     @assert isnothing(rootgroup) || !isnull(rootgroup)
     return Dataset(
-        GDAL.gdalmdarrayasclassicdataset(
+        GDAL.gdalmdarrayasclassicdatasetex(
             mdarray,
-            xdim,
-            ydim,
+            D - xdim,
+            D - ydim,
             isnothing(rootgroup) ? C_NULL : rootgroup,
             CSLConstListWrapper(options),
         ),
     )
 end
 
+# `xdim` and `ydim` are 1-based axes in Julia order
 function asclassicdataset(
-    mdarray::AbstractMDArray,
+    mdarray::AbstractMDArray{<:Any,D},
     xdim::Integer,
     ydim::Integer,
     rootgroup::Union{Nothing,AbstractGroup} = nothing,
     options::OptionList = nothing,
-)::AbstractDataset
+)::AbstractDataset where {D}
     @assert !isnull(mdarray)
+    @assert 1 <= xdim <= D
+    @assert 1 <= ydim <= D
     @assert isnothing(rootgroup) || !isnull(rootgroup)
     return IDataset(
-        GDAL.gdalmdarrayasclassicdataset(
+        GDAL.gdalmdarrayasclassicdatasetex(
             mdarray,
-            xdim,
-            ydim,
+            D - xdim,
+            D - ydim,
             isnothing(rootgroup) ? C_NULL : rootgroup,
             CSLConstListWrapper(options),
         ),
@@ -461,18 +466,18 @@ end
 
 function unsafe_asmdarray(rasterband::AbstractRasterBand)::AbstractMDArray
     @assert !isnull(rasterband)
-    ptr = GADL.gdalrasterbandasmdarray(rasterband)
-    ptr == C_NULL && error("Could not get view rasterband view as mdarray")
-    # TODO: Find dataset
-    return MDArray(ptr)
+    ptr = GDAL.gdalrasterbandasmdarray(rasterband)
+    ptr == C_NULL && error("Could not get rasterband as mdarray")
+    # Classic datasets do not track their children
+    return MDArray(ptr, WeakRef())
 end
 
 function asmdarray(rasterband::AbstractRasterBand)::AbstractMDArray
     @assert !isnull(rasterband)
-    ptr = GADL.gdalrasterbandasmdarray(rasterband)
-    ptr == C_NULL && error("Could not get view rasterband view as mdarray")
-    # TODO: Find dataset
-    return IMDArray(ptr)
+    ptr = GDAL.gdalrasterbandasmdarray(rasterband)
+    ptr == C_NULL && error("Could not get rasterband as mdarray")
+    # Classic datasets do not track their children
+    return IMDArray(ptr, WeakRef())
 end
 
 # TODO: Wrap GDAL.CPLErr
@@ -531,30 +536,22 @@ function computestatistics(
         C_NULL,
         CSLConstListWrapper(options),
     )
-    return Bool(succeess), min[], max[], mean[], stddev[], Int64(validcount[])
+    return Bool(success), min[], max[], mean[], stddev[], Int64(validcount[])
 end
 
-function clearstatistics(mdarray::AbstractMDArray)::Nothing
-    @assert !isnull(mdarray)
-    return GDAL.gdalmdarrayclearstatistics(mdarray)
-end
+# clearstatistics: not available in the C API
 
 function getcoordinatevariables(
-    mdarray::AbstractMDArray{<:Any,D},
-)::NTuple{D,T where T<:AbstractMDArray} where {D}
+    mdarray::AbstractMDArray,
+)::AbstractVector{<:AbstractMDArray}
     @assert !isnull(mdarray)
     count = Ref{Csize_t}()
     coordinatevariablesptr =
         GDAL.gdalmdarraygetcoordinatevariables(mdarray, count)
-    coordinatevariables = reverse(
-        ntuple(
-            d -> IMDArray(
-                unsafe_load(coordinatevariablesptr, d),
-                mdarray.dataset,
-            ),
-            count[],
-        ),
-    )
+    coordinatevariables = AbstractMDArray[
+        IMDArray(unsafe_load(coordinatevariablesptr, n), mdarray.dataset)
+        for n in 1:count[]
+    ]
     GDAL.vsifree(coordinatevariablesptr)
     return coordinatevariables
 end
@@ -566,13 +563,13 @@ function adviseread(
     options::OptionList = nothing,
 )::Bool where {D}
     @assert !isnull(mdarray)
-    @assert isnothing(arraystartix) ? true : length(arraystartidx) == D
-    @assert isnothing(count) ? true : length(count == D)
+    @assert isnothing(arraystartidx) || length(arraystartidx) == D
+    @assert isnothing(count) || length(count) == D
     gdal_arraystartidx =
         isnothing(arraystartidx) ? C_NULL :
         UInt64[arraystartidx[d] - 1 for d in D:-1:1]
     gdal_count = isnothing(count) ? C_NULL : Csize_t[count[d] for d in D:-1:1]
-    return GDAL.gdalmdarrayadviseread(
+    return GDAL.gdalmdarrayadvisereadex(
         mdarray,
         gdal_arraystartidx,
         gdal_count,
@@ -580,45 +577,16 @@ function adviseread(
     )
 end
 
-function isregularlyspaced(
-    mdarray::AbstractMDArray,
-)::Union{Nothing,Tuple{Float64,Float64}}
-    @assert !isnull(mdarray)
-    start = Ref{Float64}()
-    increment = Ref{Float64}()
-    res = GDAL.gdalmdarrayisregularlyspaced(mdarray, start, increment)
-    !res[] && return nothing
-    return start[], increment[]
-end
+# isregularlyspaced: not available in the C API
 
-function guessgeotransform(
-    mdarray::AbstractMDArray,
-    dimx::Integer,
-    dimy::Integer,
-    pixelispoint::Bool,
-)::Union{Nothing,AbstractVector{Float64}}
-    @assert !isnull(mdarray)
-    geotransform = Vector{Float64}(undef, 6)
-    res = GDAL.gdalmdarrayguessgeotransform(
-        mdarray,
-        dimx,
-        dimy,
-        pixelispoint,
-        geotransform,
-    )
-    !res && return nothing
-    return geotransform
-end
+# guessgeotransform: not available in the C API
 
 function cache(mdarray::AbstractMDArray, options::OptionList = nothing)::Bool
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraycache(mdarray, CSLConstListWrapper(options))
 end
 
-function getrootgroup(mdarray::AbstractMDArray)::AbstractGroup
-    @assert !isnull(mdarray)
-    return Group(GDAL.gdalmdarraygetrootgroup(mdarray), mdarray.dataset)
-end
+# getrootgroup: not available in the C API
 
 ################################################################################
 
@@ -712,12 +680,15 @@ function getblocksize(
     return blocksize
 end
 
-DiskArrays.haschunks(::AbstractMDArray) = DiskArrays.Chunked()
+# GDAL reports a block size of 0 for arrays that are not chunked
+function DiskArrays.haschunks(mdarray::AbstractMDArray)
+    return all(>(0), getblocksize(mdarray)) ? DiskArrays.Chunked() :
+           DiskArrays.Unchunked()
+end
 
-function DiskArrays.eachchunk(
-    mdarray::AbstractMDArray{<:Any,D},
-)::NTuple{D,Int} where {D}
+function DiskArrays.eachchunk(mdarray::AbstractMDArray)
     blocksize = getblocksize(mdarray)
+    all(>(0), blocksize) || return DiskArrays.estimate_chunksize(mdarray)
     return DiskArrays.GridChunks(mdarray, blocksize)
 end
 
@@ -787,9 +758,8 @@ function read!(
     arraystep::Union{Nothing,IndexLike{D}},
     buffer::StridedArray{T,D},
 )::Nothing where {T,D}
-    @assert length(region) == D
-    arraystartidx = first.(indices)
-    count = length.(indices)
+    arraystartidx = first.(indices.indices)
+    count = length.(indices.indices)
     return read!(mdarray, arraystartidx, count, arraystep, buffer)
 end
 
@@ -824,12 +794,17 @@ function read(mdarray::AbstractMDArray)::AbstractArray
 end
 
 function DiskArrays.readblock!(
-    mdarray::AbstractMDArray{<:Any,D},
+    mdarray::AbstractMDArray{T,D},
     aout,
     r::Vararg{AbstractUnitRange,D},
-)::Nothing where {D}
-    success == read!(mdarray, r, aout)
-    @assert success
+)::Nothing where {T,D}
+    if aout isa StridedArray{T,D}
+        read!(mdarray, r, aout)
+    else
+        buffer = Array{T,D}(undef, length.(r))
+        read!(mdarray, r, buffer)
+        aout .= buffer
+    end
     return nothing
 end
 
@@ -884,9 +859,8 @@ function write(
     arraystep::Union{Nothing,IndexLike{D}},
     buffer::StridedArray{T,D},
 )::Nothing where {T,D}
-    @assert length(region) == D
-    arraystartidx = first.(indices)
-    count = length.(indices)
+    arraystartidx = first.(indices.indices)
+    count = length.(indices.indices)
     return write(mdarray, arraystartidx, count, arraystep, buffer)
 end
 
@@ -906,12 +880,12 @@ function write(
 end
 
 function DiskArrays.writeblock!(
-    mdarray::AbstractMDArray{<:Any,D},
+    mdarray::AbstractMDArray{T,D},
     ain,
     r::Vararg{AbstractUnitRange,D},
-)::Nothing where {D}
-    success == write(mdarray, r, ain)
-    @assert success
+)::Nothing where {T,D}
+    buffer = ain isa StridedArray{T,D} ? ain : Array{T,D}(ain)
+    write(mdarray, r, buffer)
     return nothing
 end
 

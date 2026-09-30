@@ -135,10 +135,11 @@ end
 
 @testset "test_mdarray.jl" begin
     @testset "$drivername" for (
-        drivername,
-        drivercreateoptions,
-        mdarraycreateoptions,
-    ) in mdarray_drivers
+            drivername,
+            drivercreateoptions,
+            mdarraycreateoptions,
+        ) in mdarray_drivers
+
         driver = AG.getdriver(drivername)
 
         @testset "interactive" begin
@@ -269,10 +270,7 @@ end
                 if drivername != "MEM"
                     dataset = AG.open(
                         filename,
-                        AG.OF_MULTIDIM_RASTER |
-                        AG.OF_READONLY |
-                        AG.OF_SHARED |
-                        AG.OF_VERBOSE_ERROR,
+                        AG.OF_MULTIDIM_RASTER | AG.OF_READONLY | AG.OF_SHARED | AG.OF_VERBOSE_ERROR,
                         nothing,
                         nothing,
                         nothing,
@@ -459,8 +457,8 @@ end
                                             # @test AG.iswritable(mdarray)
 
                                             data = Float32[
-                                                x + 100 * y for x in 1:nx,
-                                                y in 1:ny
+                                                x + 100 * y for
+                                                x in 1:nx, y in 1:ny
                                             ]
                                             AG.write(mdarray, data)
 
@@ -491,9 +489,7 @@ end
                 @testset "reading" begin
                     AG.open(
                         filename,
-                        AG.OF_MULTIDIM_RASTER |
-                        AG.OF_READONLY |
-                        AG.OF_SHARED |
+                        AG.OF_MULTIDIM_RASTER | AG.OF_READONLY | AG.OF_SHARED |
                         AG.OF_VERBOSE_ERROR,
                         nothing,
                         nothing,
@@ -618,4 +614,252 @@ end
             end
         end
     end
+end
+
+@testset "test_mdarray.jl: API" begin
+    dataset = AG.createmultidimensional(AG.getdriver("MEM"), "api")
+    root = AG.getrootgroup(dataset)
+    dimx = AG.createdimension(root, "x", "", "", 3)
+    dimy = AG.createdimension(root, "y", "", "", 4)
+    datatype = AG.extendeddatatypecreate(Float32)
+    mdarray = AG.createmdarray(root, "a", [dimx, dimy], datatype)
+    data = Float32[x + 10 * y for x in 1:3, y in 1:4]
+    AG.write(mdarray, data)
+
+    @testset "DiskArrays" begin
+        # MEM arrays are not chunked
+        @test AG.getblocksize(mdarray) == (0, 0)
+        @test AG.DiskArrays.haschunks(mdarray) isa AG.DiskArrays.Unchunked
+        @test mdarray[2, 3] == data[2, 3]
+        @test mdarray[:, 2] == data[:, 2]
+        @test mdarray[2:3, 2:4] == data[2:3, 2:4]
+        @test collect(mdarray) == data
+        @test sum(mdarray) == sum(data)
+        mdarray[1, 1] = 5
+        @test mdarray[1, 1] == 5
+        mdarray[:, 2] .= 0
+        @test AG.read(mdarray)[:, 2] == zeros(Float32, 3)
+        AG.write(mdarray, data)
+        @test AG.read(mdarray) == data
+    end
+
+    @testset "read! and write" begin
+        buffer = zeros(Float32, 2, 2)
+        AG.read!(mdarray, CartesianIndices((2:3, 2:3)), buffer)
+        @test buffer == data[2:3, 2:3]
+        AG.read!(mdarray, (1:2:3, 1:3:4), buffer)
+        @test buffer == data[1:2:3, 1:3:4]
+        AG.write(mdarray, CartesianIndices((1:2, 1:2)), zeros(Float32, 2, 2))
+        @test AG.read(mdarray)[1:2, 1:2] == zeros(Float32, 2, 2)
+        AG.write(mdarray, data)
+    end
+
+    @testset "properties" begin
+        @test AG.getname(mdarray) == "a"
+        @test AG.getfullname(mdarray) == "/a"
+        @test AG.gettotalelementscount(mdarray) == 12
+        @test length(mdarray) == 12
+        @test ndims(mdarray) == 2
+        @test size(mdarray) == (3, 4)
+        @test eltype(mdarray) == Float32
+        @test AG.getname.(AG.getdimensions(mdarray)) == ("x", "y")
+        @test AG.getdatatype(mdarray) == datatype
+        @test AG.getstructuralinfo(mdarray) == []
+        @test AG.getprocessingchunksize(mdarray, 1000) == [3, 4]
+        @test AG.setunit!(mdarray, "m")
+        @test AG.getunit(mdarray) == "m"
+        @test AG.setspatialref!(mdarray, AG.importEPSG(4326))
+        @test AG.toEPSG(AG.getspatialref(mdarray)) == 4326
+    end
+
+    @testset "nodata, offset, scale" begin
+        @test AG.getnodatavalue(Float64, mdarray) === nothing
+        @test AG.setnodatavalue!(mdarray, -1.0)
+        @test AG.getnodatavalue(Float64, mdarray) == -1.0
+        @test AG.getnodatavalue(Int64, mdarray) == -1
+        @test AG.getrawnodatavalue(mdarray) != C_NULL
+        @test AG.getoffset(mdarray) === nothing
+        @test AG.getscale(mdarray) === nothing
+        @test AG.getoffsetex(mdarray) === nothing
+        @test AG.getscaleex(mdarray) === nothing
+        @test AG.setoffset!(mdarray, 1.5)
+        @test AG.setscale!(mdarray, 2.0, Float32)
+        @test AG.getoffset(mdarray) == 1.5
+        @test AG.getscaleex(mdarray) == (2.0, Float32)
+        AG.getunscaled(mdarray) do unscaled
+            @test AG.read(unscaled) == 2 .* data .+ 1.5
+        end
+    end
+
+    @testset "derived arrays" begin
+        # View expressions use GDAL's syntax: 0-based, end-exclusive,
+        # and in GDAL's (reversed) axis order
+        AG.getview(mdarray, "[1:3,...]") do view
+            @test AG.read(view) == data[:, 2:3]
+        end
+        @test_throws GDAL.GDALError AG.getview(mdarray, "[[invalid")
+        AG.getindex(mdarray, 1) do slice
+            @test AG.read(slice) == data[:, 2]
+        end
+        AG.transpose(mdarray) do transposed
+            @test AG.read(transposed) == permutedims(data)
+        end
+        AG.transpose(mdarray, [1, 2]) do transposed
+            @test AG.read(transposed) == data
+        end
+        AG.getmask(mdarray) do mask
+            @test AG.read(mask) == ones(UInt8, 3, 4)
+        end
+        AG.asclassicdataset(mdarray, 1, 2) do classic
+            @test AG.width(classic) == 3
+            @test AG.height(classic) == 4
+            @test AG.read(AG.getband(classic, 1)) == data
+        end
+        @test AG.getcoordinatevariables(mdarray) == []
+    end
+
+    @testset "statistics" begin
+        err, min, max, mean, stddev, count =
+            AG.getstatistics(mdarray, false, true)
+        @test err == GDAL.CE_None
+        @test (min, max, count) == (11, 43, 12)
+        @test mean ≈ 27
+        success, min, max, mean, stddev, count =
+            AG.computestatistics(mdarray, false)
+        @test success
+        @test (min, max, count) == (11, 43, 12)
+        @test AG.adviseread(mdarray, nothing, nothing)
+        @test AG.adviseread(mdarray, (1, 1), (2, 2))
+    end
+
+    @testset "indexing variables" begin
+        xvar = AG.createmdarray(
+            root,
+            "xvar",
+            [dimx],
+            AG.extendeddatatypecreate(Float64),
+        )
+        AG.write(xvar, [0.0, 1.0, 2.0])
+        yvar = AG.createmdarray(
+            root,
+            "yvar",
+            [dimy],
+            AG.extendeddatatypecreate(Float64),
+        )
+        AG.write(yvar, [0.0, 1.0, 2.0, 3.0])
+        AG.setindexingvariable!(dimx, xvar)
+        AG.setindexingvariable!(dimy, yvar)
+        @test AG.getname(AG.getindexingvariable(dimx)) == "xvar"
+
+        AG.subsetdimensionfromselection(root, "/xvar=1") do subset
+            AG.openmdarray(subset, "a") do subarray
+                @test AG.read(subarray) == data[2:2, :]
+            end
+        end
+        AG.getresampled(
+            mdarray,
+            nothing,
+            GDAL.GRIORA_NearestNeighbour,
+            nothing,
+        ) do resampled
+            # GDAL orients the y axis north-up
+            @test AG.read(resampled) == data[:, end:-1:1]
+        end
+    end
+
+    @testset "attributes" begin
+        AG.writeattribute(mdarray, "values", Float64[1, 2, 3])
+        AG.writeattribute(mdarray, "string", "hello")
+        attribute = AG.getattribute(mdarray, "values")
+        @test AG.read(attribute) == [1, 2, 3]
+        @test AG.getdimensionssize(attribute) == (3,)
+        @test length(AG.readasraw(attribute)) == 3 * sizeof(Float64)
+        @test AG.getname(attribute) == "values"
+        @test AG.getfullname(attribute) == "/a/values"
+        @test length(attribute) == 3
+        @test ndims(attribute) == 1
+        @test AG.getclass(AG.getdatatype(attribute)) == GDAL.GEDTC_NUMERIC
+        @test AG.rename!(attribute, "numbers")
+        @test sort(AG.getname.(AG.getattributes(mdarray))) ==
+              ["numbers", "string"]
+        @test AG.deleteattribute(mdarray, "string")
+        @test AG.getname.(AG.getattributes(mdarray)) == ["numbers"]
+    end
+
+    @testset "renaming and groups" begin
+        @test AG.rename!(dimy, "yy")
+        @test AG.getname(dimy) == "yy"
+        group = AG.creategroup(root, "group")
+        @test AG.rename!(group, "renamed")
+        @test AG.getfullname(group) == "/renamed"
+        @test AG.getname(AG.opengroupfromfullname(root, "/renamed")) ==
+              "renamed"
+        @test AG.rename!(mdarray, "b")
+        @test AG.getname(AG.openmdarrayfromfullname(root, "/b")) == "b"
+        @test AG.getname(AG.resolvemdarray(root, "b", "")) == "b"
+        @test AG.deletegroup(root, "renamed")
+        @test AG.getgroupnames(root) == []
+    end
+
+    @testset "resize!" begin
+        dimr = AG.createdimension(root, "r", "", "", 2)
+        resizable = AG.createmdarray(
+            root,
+            "resizable",
+            [dimr],
+            AG.extendeddatatypecreate(Int32),
+        )
+        @test AG.resize!(resizable, [5])
+        @test size(resizable) == (5,)
+    end
+
+    @testset "extended data types" begin
+        stringtype = AG.extendeddatatypecreatestring(10)
+        @test AG.getclass(datatype) == GDAL.GEDTC_NUMERIC
+        @test AG.getnumericdatatype(datatype) == AG.GDT_Float32
+        @test AG.getsize(datatype) == 4
+        @test AG.getclass(stringtype) == GDAL.GEDTC_STRING
+        @test AG.getmaxstringlength(stringtype) == 10
+        @test AG.getsubtype(stringtype) == GDAL.GEDTST_NONE
+        @test datatype != stringtype
+        @test AG.canconvertto(datatype, stringtype)
+        @test AG.getcomponents(datatype) == []
+    end
+
+    @testset "rasterband as mdarray" begin
+        AG.create(
+            AG.getdriver("MEM");
+            width = 2,
+            height = 3,
+            nbands = 1,
+            dtype = UInt8,
+        ) do classic
+            AG.asmdarray(AG.getband(classic, 1)) do band
+                @test size(band) == (2, 3)
+                @test eltype(band) == UInt8
+            end
+        end
+    end
+
+    @test AG.flushcache!(dataset) == GDAL.CE_None
+    @test AG.force_close_mdarray_dataset!(dataset) === nothing
+    @test AG.isnull(mdarray)
+end
+
+@testset "test_mdarray.jl: cache" begin
+    # Caching requires an array stored in a file
+    filename = tempname() * ".nc"
+    AG.createmultidimensional(AG.getdriver("netCDF"), filename) do dataset
+        AG.getrootgroup(dataset) do root
+            AG.createdimension(root, "z", "", "", 2) do dimz
+                AG.extendeddatatypecreate(Int16) do datatype
+                    AG.createmdarray(root, "m", [dimz], datatype) do mdarray
+                        AG.write(mdarray, Int16[1, 2])
+                        @test AG.cache(mdarray)
+                    end
+                end
+            end
+        end
+    end
+    rm(filename; force = true)
 end
