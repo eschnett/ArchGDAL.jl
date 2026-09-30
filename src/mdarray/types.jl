@@ -270,6 +270,8 @@ function destroy(edtcomponents::VectorLike{<:AbstractEDTComponent})
 end
 destroy(attributes::VectorLike{<:AbstractAttribute}) = destroy.(attributes)
 destroy(dimensions::VectorLike{<:AbstractDimension}) = destroy.(dimensions)
+# E.g. the dimensions of a 0-dimensional array; ambiguous otherwise
+destroy(::Tuple{}) = nothing
 
 ################################################################################
 

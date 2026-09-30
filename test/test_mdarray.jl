@@ -694,9 +694,23 @@ end
             @test AG.read(view) == data[:, 2:3]
         end
         @test_throws GDAL.GDALError AG.getview(mdarray, "[[invalid")
-        AG.getindex(mdarray, 1) do slice
+        # Integer indices are 1-based, in Julia order, and fix the
+        # trailing axes
+        AG.getview(mdarray, 2) do slice
+            @test size(slice) == (3,)
             @test AG.read(slice) == data[:, 2]
         end
+        AG.getview(mdarray, 3, 2) do element
+            @test ndims(element) == 0
+            @test AG.read(element)[] == data[3, 2]
+        end
+        slice = AG.getview(mdarray, 4)
+        @test slice[3] == data[3, 4]
+        @test_throws AssertionError AG.getview(mdarray, 0)
+        @test_throws AssertionError AG.getview(mdarray, 1, 1, 1)
+        @test_throws GDAL.GDALError AG.getview(mdarray, 5)
+        # Field access requires a compound data type
+        @test_throws GDAL.GDALError AG.getfieldview(mdarray, "it's")
         AG.transpose(mdarray) do transposed
             @test AG.read(transposed) == permutedims(data)
         end

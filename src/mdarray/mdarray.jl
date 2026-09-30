@@ -220,6 +220,16 @@ function unsafe_getview(
     return MDArray(ptr, mdarray.dataset)
 end
 
+"""
+    getview(mdarray::AbstractMDArray, viewexpr::AbstractString)
+
+Return a view of `mdarray` described by a GDAL view expression, e.g.
+`"[1:3,...]"`.
+
+The expression uses GDAL's syntax: indices are 0-based, ranges exclude
+their end, and axes are in GDAL's order, which is the reverse of Julia's.
+See `GDALMDArray::GetView` in the GDAL documentation.
+"""
 function getview(
     mdarray::AbstractMDArray,
     viewexpr::AbstractString,
@@ -230,40 +240,73 @@ function getview(
     return IMDArray(ptr, mdarray.dataset)
 end
 
-function unsafe_getindex(
+# Corresponds to `GDALMDArray::GetView(const std::vector<GUInt64>&)`,
+# which is not available in the C API. `indices` are 1-based and in
+# Julia order; they fix the trailing axes.
+function _indexviewexpr(
+    mdarray::AbstractMDArray{<:Any,D},
+    indices::NTuple{N,Integer},
+)::String where {D,N}
+    @assert 1 <= N <= D
+    @assert all(>=(1), indices)
+    return "[" * join(reverse(indices) .- 1, ",") * "]"
+end
+
+function unsafe_getview(
+    mdarray::AbstractMDArray,
+    index::Integer,
+    indices::Integer...,
+)::AbstractMDArray
+    @assert !isnull(mdarray)
+    return unsafe_getview(mdarray, _indexviewexpr(mdarray, (index, indices...)))
+end
+
+"""
+    getview(mdarray::AbstractMDArray, indices::Integer...)
+
+Return a view of `mdarray` with its trailing axes fixed to `indices`.
+
+The indices are 1-based and in Julia order. For a 3-dimensional array
+`a`, `getview(a, j, k)` corresponds to `view(a, :, j, k)`, and
+`getview(a, i, j, k)` to the 0-dimensional `view(a, i, j, k)`. Unlike
+`view`, the result is a lazy GDAL array: it reads data only when
+accessed.
+"""
+function getview(
+    mdarray::AbstractMDArray,
+    index::Integer,
+    indices::Integer...,
+)::AbstractMDArray
+    @assert !isnull(mdarray)
+    return getview(mdarray, _indexviewexpr(mdarray, (index, indices...)))
+end
+
+# Corresponds to `GDALMDArray::operator[](const std::string&)`, which
+# is not available in the C API
+function _fieldviewexpr(fieldname::AbstractString)::String
+    return "['" * replace(fieldname, '\\' => "\\\\", '\'' => "\\\'") * "']"
+end
+
+function unsafe_getfieldview(
     mdarray::AbstractMDArray,
     fieldname::AbstractString,
 )::AbstractMDArray
     @assert !isnull(mdarray)
-    viewexpr = "['" * replace(fieldname, '\\' => "\\\\", '\'' => "\\\'") * "']"
-    return unsafe_getview(mdarray, viewexpr)
+    return unsafe_getview(mdarray, _fieldviewexpr(fieldname))
 end
 
-function getindex(
+"""
+    getfieldview(mdarray::AbstractMDArray, fieldname::AbstractString)
+
+Return a view of the field `fieldname` of an array with a compound data
+type.
+"""
+function getfieldview(
     mdarray::AbstractMDArray,
     fieldname::AbstractString,
 )::AbstractMDArray
     @assert !isnull(mdarray)
-    viewexpr = "['" * replace(fieldname, '\\' => "\\\\", '\'' => "\\\'") * "']"
-    return getview(mdarray, viewexpr)
-end
-
-function unsafe_getindex(
-    mdarray::AbstractMDArray,
-    indices::Integer...,
-)::AbstractMDArray
-    @assert !isnull(mdarray)
-    viewexpr = "[" * join(reverse(indices), ",") * "]"
-    return unsafe_getview(mdarray, viewexpr)
-end
-
-function getindex(
-    mdarray::AbstractMDArray,
-    indices::Integer...,
-)::AbstractMDArray
-    @assert !isnull(mdarray)
-    viewexpr = "[" * join(reverse(indices), ",") * "]"
-    return getview(mdarray, viewexpr)
+    return getview(mdarray, _fieldviewexpr(fieldname))
 end
 
 # `perm[k]` is the (1-based, Julia order) axis of `mdarray` that becomes
