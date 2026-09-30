@@ -20,6 +20,30 @@ function unsafe_createmultidimensional(
     )
 end
 
+"""
+    createmultidimensional(driver::Driver, name::AbstractString,
+                           rootgroupoptions=nothing, options=nothing;
+                           hard_close=true)
+
+Create a new multidimensional dataset with the given driver.
+
+Only drivers that advertise multidimensional creation support can be used,
+e.g. "MEM", "netCDF" or "Zarr".
+
+### Parameters
+* `driver`: the driver used to create the dataset.
+* `name`: the name of the dataset (usually a file name).
+* `rootgroupoptions`: driver-specific options for the root group
+  (`"NAME=VALUE"` strings), or `nothing`.
+* `options`: driver-specific creation options, or `nothing`.
+
+### Keyword Arguments
+* `hard_close`: whether the dataset tracks its interactive children, so
+  that `force_close_mdarray_dataset!` can release them.
+
+### Returns
+The new dataset. Its contents are accessed through `getrootgroup`.
+"""
 function createmultidimensional(
     driver::Driver,
     name::AbstractString,
@@ -146,6 +170,14 @@ function openmultidimensional(
 end
 
 # TODO: Wrap `GDAL.CPLErr`
+"""
+    flushcache!(dataset::AbstractDataset)
+
+Write all pending changes of `dataset` to disk.
+
+### Returns
+The `GDAL.CPLErr` error code (`GDAL.CE_None` on success).
+"""
 function flushcache!(dataset::AbstractDataset)::GDAL.CPLErr
     @assert !isnull(dataset)
     return GDAL.gdalflushcache(dataset)
@@ -194,6 +226,11 @@ function unsafe_getrootgroup(dataset::AbstractDataset)::AbstractGroup
     return Group(GDAL.gdaldatasetgetrootgroup(dataset), WeakRef(dataset))
 end
 
+"""
+    getrootgroup(dataset::AbstractDataset)
+
+Return the root group of a multidimensional dataset.
+"""
 function getrootgroup(dataset::AbstractDataset)::AbstractGroup
     @assert !isnull(dataset)
     return IGroup(GDAL.gdaldatasetgetrootgroup(dataset), WeakRef(dataset))

@@ -29,6 +29,12 @@ end
 
 # getfilename: not available in the C API
 
+"""
+    getstructuralinfo(mdarray::AbstractMDArray)
+
+Return structural information about the array as `"NAME=VALUE"` strings,
+e.g. its compression method.
+"""
 function getstructuralinfo(
     mdarray::AbstractMDArray,
 )::AbstractVector{<:AbstractString}
@@ -36,16 +42,37 @@ function getstructuralinfo(
     return GDAL.gdalmdarraygetstructuralinfo(mdarray)
 end
 
+"""
+    getunit(mdarray::AbstractMDArray)
+
+Return the unit of the array's values, or `""` if unknown.
+"""
 function getunit(mdarray::AbstractMDArray)::AbstractString
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraygetunit(mdarray)
 end
 
+"""
+    setunit!(mdarray::AbstractMDArray, unit::AbstractString)
+
+Set the unit of the array's values, preferably a UCUM or UDUNITS-2 string.
+
+### Returns
+`true` on success.
+"""
 function setunit!(mdarray::AbstractMDArray, unit::AbstractString)::Bool
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraysetunit(mdarray, unit)
 end
 
+"""
+    setspatialref!(mdarray::AbstractMDArray, srs::AbstractSpatialRef)
+
+Set the spatial reference system of the array.
+
+### Returns
+`true` on success.
+"""
 function setspatialref!(mdarray::AbstractMDArray, srs::AbstractSpatialRef)::Bool
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraysetspatialref(mdarray, srs)
@@ -56,16 +83,33 @@ function unsafe_getspatialref(mdarray::AbstractMDArray)::AbstractSpatialRef
     return SpatialRef(GDAL.gdalmdarraygetspatialref(mdarray))
 end
 
+"""
+    getspatialref(mdarray::AbstractMDArray)
+
+Return the spatial reference system of the array.
+"""
 function getspatialref(mdarray::AbstractMDArray)::AbstractSpatialRef
     @assert !isnull(mdarray)
     return ISpatialRef(GDAL.gdalmdarraygetspatialref(mdarray))
 end
 
+"""
+    getrawnodatavalue(mdarray::AbstractMDArray)
+
+Return a pointer to the raw nodata value, stored in the array's data type,
+or `C_NULL` if there is none. The pointer is only valid while the array is
+alive and its nodata value is not changed.
+"""
 function getrawnodatavalue(mdarray::AbstractMDArray)::Ptr{Cvoid}
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraygetrawnodatavalue(mdarray)
 end
 
+"""
+    getrawnodatavalueasdouble(mdarray::AbstractMDArray)
+
+Return the nodata value as `Float64`, or `nothing` if there is none.
+"""
 function getrawnodatavalueasdouble(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Float64}
@@ -75,6 +119,11 @@ function getrawnodatavalueasdouble(
     return hasnodata[] != 0 ? nodatavalue : nothing
 end
 
+"""
+    getrawnodatavalueasint64(mdarray::AbstractMDArray)
+
+Return the nodata value as `Int64`, or `nothing` if there is none.
+"""
 function getrawnodatavalueasint64(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Int64}
@@ -84,6 +133,11 @@ function getrawnodatavalueasint64(
     return hasnodata[] != 0 ? nodatavalue : nothing
 end
 
+"""
+    getrawnodatavalueasuint64(mdarray::AbstractMDArray)
+
+Return the nodata value as `UInt64`, or `nothing` if there is none.
+"""
 function getrawnodatavalueasuint64(
     mdarray::AbstractMDArray,
 )::Union{Nothing,UInt64}
@@ -93,6 +147,12 @@ function getrawnodatavalueasuint64(
     return hasnodata[] != 0 ? nodatavalue : nothing
 end
 
+"""
+    getnodatavalue(T::Type, mdarray::AbstractMDArray)
+
+Return the nodata value converted to `T` (`Float64`, `Int64` or `UInt64`),
+or `nothing` if there is none.
+"""
 function getnodatavalue(::Type{Float64}, mdarray::AbstractMDArray)
     @assert !isnull(mdarray)
     return getrawnodatavalueasdouble(mdarray)
@@ -106,6 +166,15 @@ function getnodatavalue(::Type{UInt64}, mdarray::AbstractMDArray)
     return getrawnodatavalueasuint64(mdarray)
 end
 
+"""
+    setrawnodatavalue!(mdarray::AbstractMDArray, rawnodata::Ptr{Cvoid})
+
+Set the nodata value from a pointer to a value in the array's data type,
+or remove it if `rawnodata` is `C_NULL`.
+
+### Returns
+`true` on success.
+"""
 function setrawnodatavalue!(
     mdarray::AbstractMDArray,
     rawnodata::Ptr{Cvoid},
@@ -114,6 +183,14 @@ function setrawnodatavalue!(
     return GDAL.gdalmdarraysetrawnodatavalue(mdarray, rawnodata)
 end
 
+"""
+    setnodatavalue!(mdarray::AbstractMDArray, nodata::Union{Float64,Int64,UInt64})
+
+Set the nodata value.
+
+### Returns
+`true` on success.
+"""
 function setnodatavalue!(mdarray::AbstractMDArray, nodata::Float64)::Bool
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraysetnodatavalueasdouble(mdarray, nodata)
@@ -129,6 +206,17 @@ function setnodatavalue!(mdarray::AbstractMDArray, nodata::UInt64)::Bool
     return GDAL.gdalmdarraysetnodatavalueasuint64(mdarray, nodata)
 end
 
+"""
+    resize!(mdarray::AbstractMDArray, newdimsizes, options=nothing)
+
+Resize the array to `newdimsizes`, given in Julia order.
+
+The dimensions of the array are resized as well, which also affects other
+arrays using them. Not all drivers support resizing.
+
+### Returns
+`true` on success.
+"""
 function resize!(
     mdarray::AbstractMDArray{<:Any,D},
     newdimsizes::VectorLike{<:Integer},
@@ -144,6 +232,12 @@ function resize!(
     )
 end
 
+"""
+    getoffset(mdarray::AbstractMDArray)
+
+Return the offset `o` used to unscale the stored values `v` as
+`v * scale + o`, or `nothing` if there is none. See also `getunscaled`.
+"""
 function getoffset(mdarray::AbstractMDArray)::Union{Nothing,Float64}
     @assert !isnull(mdarray)
     hasoffset = Ref{Cint}()
@@ -151,6 +245,12 @@ function getoffset(mdarray::AbstractMDArray)::Union{Nothing,Float64}
     return hasoffset[] != 0 ? offset : nothing
 end
 
+"""
+    getoffsetex(mdarray::AbstractMDArray)
+
+Return the offset (see `getoffset`) together with the Julia type in which
+it is stored, or `nothing` if there is none.
+"""
 function getoffsetex(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Tuple{Float64,Type}}
@@ -163,6 +263,12 @@ function getoffsetex(
     return offset, storagetype
 end
 
+"""
+    getscale(mdarray::AbstractMDArray)
+
+Return the scale `s` used to unscale the stored values `v` as
+`v * s + offset`, or `nothing` if there is none. See also `getunscaled`.
+"""
 function getscale(mdarray::AbstractMDArray)::Union{Nothing,Float64}
     @assert !isnull(mdarray)
     hasscale = Ref{Cint}()
@@ -170,6 +276,12 @@ function getscale(mdarray::AbstractMDArray)::Union{Nothing,Float64}
     return hasscale[] != 0 ? scale : nothing
 end
 
+"""
+    getscaleex(mdarray::AbstractMDArray)
+
+Return the scale (see `getscale`) together with the Julia type in which it
+is stored, or `nothing` if there is none.
+"""
 function getscaleex(
     mdarray::AbstractMDArray,
 )::Union{Nothing,Tuple{Float64,Type}}
@@ -182,6 +294,16 @@ function getscaleex(
     return scale, storagetype
 end
 
+"""
+    setoffset!(mdarray::AbstractMDArray, offset::Float64, storagetype=nothing)
+
+Set the offset used to unscale the stored values (see `getoffset`).
+`storagetype` is the Julia type in which the offset is stored, or `nothing`
+for the default.
+
+### Returns
+`true` on success.
+"""
 function setoffset!(
     mdarray::AbstractMDArray,
     offset::Float64,
@@ -196,6 +318,16 @@ function setoffset!(
     )
 end
 
+"""
+    setscale!(mdarray::AbstractMDArray, scale::Float64, storagetype=nothing)
+
+Set the scale used to unscale the stored values (see `getscale`).
+`storagetype` is the Julia type in which the scale is stored, or `nothing`
+for the default.
+
+### Returns
+`true` on success.
+"""
 function setscale!(
     mdarray::AbstractMDArray,
     scale::Float64,
@@ -325,6 +457,13 @@ function unsafe_transpose(
     return MDArray(ptr, mdarray.dataset)
 end
 
+"""
+    transpose(mdarray::AbstractMDArray, perm=reverse(1:ndims(mdarray)))
+
+Return a lazy view of the array with permuted axes, like `permutedims`:
+axis `k` of the result is axis `perm[k]` of `mdarray` (1-based, Julia
+order). The default reverses all axes.
+"""
 function transpose(
     mdarray::AbstractMDArray{<:Any,D},
     perm::VectorLike{<:Integer} = D:-1:1,
@@ -345,6 +484,12 @@ function unsafe_getunscaled(mdarray::AbstractMDArray)::AbstractMDArray
     return MDArray(ptr, mdarray.dataset)
 end
 
+"""
+    getunscaled(mdarray::AbstractMDArray)
+
+Return a lazy view of the array in which the scale and offset have been
+applied to the values (see `getscale` and `getoffset`).
+"""
 function getunscaled(mdarray::AbstractMDArray)::AbstractMDArray
     @assert !isnull(mdarray)
     ptr = GDAL.gdalmdarraygetunscaled(mdarray)
@@ -362,6 +507,12 @@ function unsafe_getmask(
     return MDArray(ptr, mdarray.dataset)
 end
 
+"""
+    getmask(mdarray::AbstractMDArray, options=nothing)
+
+Return a lazy `UInt8` array that is 1 where `mdarray` holds valid values and
+0 where values are missing, e.g. equal to the nodata value.
+"""
 function getmask(
     mdarray::AbstractMDArray,
     options::OptionList = nothing,
@@ -396,6 +547,24 @@ function unsafe_getresampled(
     return MDArray(ptr, mdarray.dataset)
 end
 
+"""
+    getresampled(mdarray::AbstractMDArray, newdims, resamplealg,
+                 targetsrs, options=nothing)
+
+Return a lazy view of the array resampled onto new dimensions or a new
+spatial reference system.
+
+### Parameters
+* `newdims`: one dimension per axis (Julia order), or `nothing` to let GDAL
+  choose.
+* `resamplealg`: the resampling algorithm, e.g.
+  `GDAL.GRIORA_NearestNeighbour`.
+* `targetsrs`: the target spatial reference system, or `nothing` to keep
+  the current one.
+* `options`: driver-specific options, or `nothing`.
+
+GDAL orients the y axis of the result north-up.
+"""
 function getresampled(
     mdarray::AbstractMDArray{<:Any,D},
     newdims::Union{Nothing,VectorLike{<:AbstractDimension}},
@@ -440,6 +609,15 @@ function unsafe_getgridded(
     return MDArray(ptr, mdarray.dataset)
 end
 
+"""
+    getgridded(mdarray::AbstractMDArray, gridoptions::AbstractString,
+               xarray::AbstractMDArray, yarray::AbstractMDArray,
+               options=nothing)
+
+Return a lazy gridded version of an array of scattered points, whose
+coordinates are given by `xarray` and `yarray`. `gridoptions` uses the
+syntax of the `-a` option of `gdal_grid`, e.g. `"invdist"`.
+"""
 function getgridded(
     mdarray::AbstractMDArray,
     gridoptions::AbstractString,
@@ -485,6 +663,14 @@ function unsafe_asclassicdataset(
 end
 
 # `xdim` and `ydim` are 1-based axes in Julia order
+"""
+    asclassicdataset(mdarray::AbstractMDArray, xdim::Integer, ydim::Integer,
+                     rootgroup=nothing, options=nothing)
+
+Return a classic raster dataset view of the array, using axis `xdim` as x
+and axis `ydim` as y (1-based, Julia order); the other axes become bands.
+`rootgroup` is used to resolve references to other arrays, if given.
+"""
 function asclassicdataset(
     mdarray::AbstractMDArray{<:Any,D},
     xdim::Integer,
@@ -515,6 +701,12 @@ function unsafe_asmdarray(rasterband::AbstractRasterBand)::AbstractMDArray
     return MDArray(ptr, WeakRef())
 end
 
+"""
+    asmdarray(rasterband::AbstractRasterBand)
+
+Return a 2-dimensional multidimensional array view of a classic raster
+band. The array holds a reference to the band's dataset.
+"""
 function asmdarray(rasterband::AbstractRasterBand)::AbstractMDArray
     @assert !isnull(rasterband)
     ptr = GDAL.gdalrasterbandasmdarray(rasterband)
@@ -525,6 +717,17 @@ end
 
 # TODO: Wrap GDAL.CPLErr
 # TODO: Allow a progress function
+"""
+    getstatistics(mdarray::AbstractMDArray, approxok::Bool, force::Bool)
+
+Return statistics of the array's values, computing them if `force` is
+true and they are not cached. With `approxok`, statistics may be computed
+from a subset of the values.
+
+### Returns
+The tuple `(err, min, max, mean, stddev, validcount)`, where `err` is a
+`GDAL.CPLErr` error code.
+"""
 function getstatistics(
     mdarray::AbstractMDArray,
     approxok::Bool,
@@ -554,6 +757,16 @@ function getstatistics(
 end
 
 # TODO: Allow a progress function
+"""
+    computestatistics(mdarray::AbstractMDArray, approxok::Bool,
+                      options=nothing)
+
+Compute statistics of the array's values. With `approxok`, statistics may
+be computed from a subset of the values.
+
+### Returns
+The tuple `(success, min, max, mean, stddev, validcount)`.
+"""
 function computestatistics(
     mdarray::AbstractMDArray,
     approxok::Bool,
@@ -584,6 +797,12 @@ end
 
 # clearstatistics: not available in the C API
 
+"""
+    getcoordinatevariables(mdarray::AbstractMDArray)
+
+Return the coordinate variables of the array, e.g. the latitude and
+longitude arrays referenced by a netCDF `coordinates` attribute.
+"""
 function getcoordinatevariables(
     mdarray::AbstractMDArray,
 )::AbstractVector{<:AbstractMDArray}
@@ -599,6 +818,18 @@ function getcoordinatevariables(
     return coordinatevariables
 end
 
+"""
+    adviseread(mdarray::AbstractMDArray, arraystartidx, count, options=nothing)
+
+Advise the driver that a region of the array will be read soon, so that it
+can prefetch it.
+
+`arraystartidx` (1-based) and `count` are given in Julia order, or
+`nothing` for the whole array.
+
+### Returns
+`true` on success.
+"""
 function adviseread(
     mdarray::AbstractMDArray{<:Any,D},
     arraystartidx::Union{Nothing,IndexLike{D}},
@@ -624,6 +855,15 @@ end
 
 # guessgeotransform: not available in the C API
 
+"""
+    cache(mdarray::AbstractMDArray, options=nothing)
+
+Cache the array's contents in a sidecar file, to speed up later reads.
+Only supported for arrays stored in files.
+
+### Returns
+`true` on success.
+"""
 function cache(mdarray::AbstractMDArray, options::OptionList = nothing)::Bool
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraycache(mdarray, CSLConstListWrapper(options))
@@ -633,16 +873,32 @@ end
 
 ################################################################################
 
+"""
+    getname(mdarray::AbstractMDArray)
+
+Return the name of the array.
+"""
 function getname(mdarray::AbstractMDArray)::AbstractString
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraygetname(mdarray)
 end
 
+"""
+    getfullname(mdarray::AbstractMDArray)
+
+Return the full name of the array, including the path of its group, e.g.
+`"/group/array"`.
+"""
 function getfullname(mdarray::AbstractMDArray)::AbstractString
     @assert !isnull(mdarray)
     return GDAL.gdalmdarraygetfullname(mdarray)
 end
 
+"""
+    gettotalelementscount(mdarray::AbstractMDArray)
+
+Return the number of elements of the array.
+"""
 function gettotalelementscount(mdarray::AbstractMDArray)::Int64
     @assert !isnull(mdarray)
     return Int64(GDAL.gdalmdarraygettotalelementscount(mdarray))
@@ -657,10 +913,20 @@ end
 #     @assert !isnull(mdarray)
 #     return Int(GDAL.gdalmdarraygetdimensioncount(mdarray))
 # end
+"""
+    getdimensioncount(mdarray::AbstractMDArray)
+
+Return the number of dimensions of the array.
+"""
 getdimensioncount(mdarray::AbstractMDArray{<:Any,D}) where {D} = D
 
 Base.ndims(mdarray::AbstractMDArray)::Int = getdimensioncount(mdarray)
 
+"""
+    getdimensions(mdarray::AbstractMDArray)
+
+Return the dimensions of the array as a tuple, in Julia order.
+"""
 function getdimensions(
     mdarray::AbstractMDArray{<:Any,D},
 )::NTuple{D,T where T<:AbstractDimension} where {D}
@@ -705,6 +971,11 @@ function unsafe_getdatatype(mdarray::AbstractMDArray)::AbstractExtendedDataType
     return ExtendedDataType(GDAL.gdalmdarraygetdatatype(mdarray))
 end
 
+"""
+    getdatatype(mdarray::AbstractMDArray)
+
+Return the data type of the array.
+"""
 function getdatatype(mdarray::AbstractMDArray)::AbstractExtendedDataType
     @assert !isnull(mdarray)
     return IExtendedDataType(GDAL.gdalmdarraygetdatatype(mdarray))
@@ -712,6 +983,12 @@ end
 
 Base.eltype(mdarray::AbstractMDArray{T}) where {T} = T
 
+"""
+    getblocksize(mdarray::AbstractMDArray)
+
+Return the block (chunk) size of the array in Julia order. Entries are 0
+for arrays that are not chunked.
+"""
 function getblocksize(
     mdarray::AbstractMDArray{<:Any,D},
 )::NTuple{D,Int} where {D}
@@ -735,6 +1012,13 @@ function DiskArrays.eachchunk(mdarray::AbstractMDArray)
     return DiskArrays.GridChunks(mdarray, blocksize)
 end
 
+"""
+    getprocessingchunksize(mdarray::AbstractMDArray, maxchunkmemory::Integer)
+
+Return a chunk size (in Julia order) suitable for processing the array
+chunk by chunk, using at most `maxchunkmemory` bytes per chunk and aligned
+with the array's blocks.
+"""
 function getprocessingchunksize(
     mdarray::AbstractMDArray,
     maxchunkmemory::Integer,
@@ -750,6 +1034,20 @@ end
 
 # processperchunk
 
+"""
+    read!(mdarray::AbstractMDArray, arraystartidx, count, arraystep, buffer)
+    read!(mdarray::AbstractMDArray, region, buffer)
+    read!(mdarray::AbstractMDArray, indices::CartesianIndices, [arraystep,] buffer)
+    read!(mdarray::AbstractMDArray, buffer)
+
+Read a region of the array into `buffer`.
+
+The region is given either as its start `arraystartidx` (1-based), `count`
+and `arraystep` (or `nothing` for a step of 1), as a tuple of ranges
+`region`, or as `CartesianIndices`; all in Julia order. Without a region,
+the region is given by `axes(buffer)`. Values are converted to the element
+type of `buffer`.
+"""
 function read!(
     mdarray::AbstractMDArray,
     arraystartidx::IndexLike{D},
@@ -821,6 +1119,12 @@ function read!(
     return read!(mdarray, axes(buffer), buffer)
 end
 
+"""
+    read(mdarray::AbstractMDArray)
+
+Read the whole array into a Julia array. The array can also be indexed
+directly, e.g. `mdarray[2, :]`, which reads only the requested elements.
+"""
 function read(mdarray::AbstractMDArray)::AbstractArray
     getdimensions(mdarray) do dimensions
         D = length(dimensions)
@@ -851,6 +1155,15 @@ function DiskArrays.readblock!(
     return nothing
 end
 
+"""
+    write(mdarray::AbstractMDArray, arraystartidx, count, arraystep, buffer)
+    write(mdarray::AbstractMDArray, region, buffer)
+    write(mdarray::AbstractMDArray, indices::CartesianIndices, [arraystep,] buffer)
+    write(mdarray::AbstractMDArray, buffer)
+
+Write `buffer` to a region of the array. The region is specified as for
+`read!`. Values are converted to the array's data type.
+"""
 function write(
     mdarray::AbstractMDArray,
     arraystartidx::IndexLike{D},
@@ -932,6 +1245,14 @@ function DiskArrays.writeblock!(
     return nothing
 end
 
+"""
+    rename!(mdarray::AbstractMDArray, newname::AbstractString)
+
+Rename the array. Not all drivers support renaming.
+
+### Returns
+`true` on success.
+"""
 function rename!(mdarray::AbstractMDArray, newname::AbstractString)::Bool
     @assert !isnull(mdarray)
     return GDAL.gdalmdarrayrename(mdarray, newname)
@@ -949,6 +1270,12 @@ function unsafe_getattribute(
     return Attribute(ptr, mdarray.dataset)
 end
 
+"""
+    getattribute(mdarray::AbstractMDArray, name::AbstractString)
+
+Return the attribute `name` of the array. Throws an error if it does not
+exist. See also `readattribute`.
+"""
 function getattribute(
     mdarray::AbstractMDArray,
     name::AbstractString,
@@ -977,6 +1304,11 @@ function unsafe_getattributes(
     return attributes
 end
 
+"""
+    getattributes(mdarray::AbstractMDArray, options=nothing)
+
+Return all attributes of the array.
+"""
 function getattributes(
     mdarray::AbstractMDArray,
     options::OptionList = nothing,
@@ -998,7 +1330,7 @@ end
 function unsafe_createattribute(
     mdarray::AbstractMDArray,
     name::AbstractString,
-    dimensions::AbstractVector{<:Integer},
+    dimensions::VectorLike{<:Integer},
     datatype::AbstractExtendedDataType,
     options::OptionList = nothing,
 )::AbstractAttribute
@@ -1008,7 +1340,7 @@ function unsafe_createattribute(
         mdarray,
         name,
         length(dimensions),
-        dimensions,
+        reverse(dimensions),
         datatype,
         CSLConstListWrapper(options),
     )
@@ -1016,10 +1348,17 @@ function unsafe_createattribute(
     return Attribute(ptr, mdarray.dataset)
 end
 
+"""
+    createattribute(mdarray::AbstractMDArray, name::AbstractString, dimensions,
+                    datatype::AbstractExtendedDataType, options=nothing)
+
+Create an attribute of the array. The arguments are as for
+`createattribute` on a group. See also `writeattribute`.
+"""
 function createattribute(
     mdarray::AbstractMDArray,
     name::AbstractString,
-    dimensions::AbstractVector{<:Integer},
+    dimensions::VectorLike{<:Integer},
     datatype::AbstractExtendedDataType,
     options::OptionList = nothing,
 )::AbstractAttribute
@@ -1029,7 +1368,7 @@ function createattribute(
         mdarray,
         name,
         length(dimensions),
-        dimensions,
+        reverse(dimensions),
         datatype,
         CSLConstListWrapper(options),
     )
@@ -1037,6 +1376,15 @@ function createattribute(
     return IAttribute(ptr, mdarray.dataset)
 end
 
+"""
+    deleteattribute(mdarray::AbstractMDArray, name::AbstractString,
+                    options=nothing)
+
+Delete the attribute `name` of the array.
+
+### Returns
+`true` on success.
+"""
 function deleteattribute(
     mdarray::AbstractMDArray,
     name::AbstractString,

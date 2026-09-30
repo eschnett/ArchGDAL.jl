@@ -9,17 +9,34 @@ function Base.:(==)(
     return Bool(GDAL.gdalextendeddatatypeequals(firstedt, secondedt))
 end
 
+"""
+    getname(edt::AbstractExtendedDataType)
+
+Return the name of the data type (mainly meaningful for compound types).
+"""
 function getname(edt::AbstractExtendedDataType)::AbstractString
     @assert !isnull(edt)
     return GDAL.gdalextendeddatatypegetname(edt)
 end
 
 # TODO: Wrap GDAL.GDALExtendedDataTypeClass
+"""
+    getclass(edt::AbstractExtendedDataType)
+
+Return the class of the data type: `GDAL.GEDTC_NUMERIC`,
+`GDAL.GEDTC_STRING` or `GDAL.GEDTC_COMPOUND`.
+"""
 function getclass(edt::AbstractExtendedDataType)::GDAL.GDALExtendedDataTypeClass
     @assert !isnull(edt)
     return GDAL.gdalextendeddatatypegetclass(edt)
 end
 
+"""
+    getnumericdatatype(edt::AbstractExtendedDataType)
+
+Return the numeric data type (e.g. `GDT_Float32`) of a numeric data type,
+or `GDT_Unknown` for other classes.
+"""
 function getnumericdatatype(edt::AbstractExtendedDataType)::GDALDataType
     @assert !isnull(edt)
     return convert(
@@ -29,6 +46,12 @@ function getnumericdatatype(edt::AbstractExtendedDataType)::GDALDataType
 end
 
 # TODO: Wrap GDAL.GDALExtendedDataTypeSubType
+"""
+    getsubtype(edt::AbstractExtendedDataType)
+
+Return the subtype of a string data type, e.g. `GDAL.GEDTST_JSON`, or
+`GDAL.GEDTST_NONE`.
+"""
 function getsubtype(
     edt::AbstractExtendedDataType,
 )::GDAL.GDALExtendedDataTypeSubType
@@ -49,6 +72,11 @@ function unsafe_getcomponents(
     return components
 end
 
+"""
+    getcomponents(edt::AbstractExtendedDataType)
+
+Return the components of a compound data type; empty for other classes.
+"""
 function getcomponents(
     edt::AbstractExtendedDataType,
 )::AbstractVector{<:AbstractEDTComponent}
@@ -62,16 +90,32 @@ function getcomponents(
     return components
 end
 
+"""
+    getsize(edt::AbstractExtendedDataType)
+
+Return the size of the data type in bytes.
+"""
 function getsize(edt::AbstractExtendedDataType)::Int
     @assert !isnull(edt)
     return Int(GDAL.gdalextendeddatatypegetsize(edt))
 end
 
+"""
+    getmaxstringlength(edt::AbstractExtendedDataType)
+
+Return the maximum length of a string data type, or 0 if unlimited.
+"""
 function getmaxstringlength(edt::AbstractExtendedDataType)::Int
     @assert !isnull(edt)
     return Int(GDAL.gdalextendeddatatypegetmaxstringlength(edt))
 end
 
+"""
+    canconvertto(sourceedt::AbstractExtendedDataType,
+                 targetedt::AbstractExtendedDataType)
+
+Return whether values of type `sourceedt` can be converted to `targetedt`.
+"""
 function canconvertto(
     sourceedt::AbstractExtendedDataType,
     targetedt::AbstractExtendedDataType,
@@ -92,6 +136,12 @@ function unsafe_extendeddatatypecreate(
     return ExtendedDataType(GDAL.gdalextendeddatatypecreate(type))
 end
 
+"""
+    extendeddatatypecreate(T::Type)
+
+Create a numeric data type for the Julia type `T`, e.g. `Float32` or
+`Complex{Int16}`.
+"""
 function extendeddatatypecreate(::Type{T})::AbstractExtendedDataType where {T}
     type = convert(GDALDataType, T)
     return IExtendedDataType(GDAL.gdalextendeddatatypecreate(type))
@@ -107,6 +157,15 @@ function unsafe_extendeddatatypecreatestring(
     )
 end
 
+"""
+    extendeddatatypecreatestring(maxstringlength=0, subtype=GDAL.GEDTST_NONE)
+
+Create a string data type.
+
+### Parameters
+* `maxstringlength`: the maximum string length, or 0 for unlimited.
+* `subtype`: the string subtype, e.g. `GDAL.GEDTST_JSON`.
+"""
 function extendeddatatypecreatestring(
     maxstringlength::Integer = 0,
     subtype::GDAL.GDALExtendedDataTypeSubType = GDAL.GEDTST_NONE,
@@ -123,11 +182,21 @@ end
 
 # GDLEDTComponent
 
+"""
+    getname(comp::AbstractEDTComponent)
+
+Return the name of a component of a compound data type.
+"""
 function getname(comp::AbstractEDTComponent)::AbstractString
     @assert !isnull(comp)
     return GDAL.gdaledtcomponentgetname(comp)
 end
 
+"""
+    getoffset(comp::AbstractEDTComponent)
+
+Return the offset in bytes of a component within its compound data type.
+"""
 function getoffset(comp::AbstractEDTComponent)::Int
     @assert !isnull(comp)
     return Int(GDAL.gdaledtcomponentgetoffset(comp))
@@ -138,6 +207,11 @@ function unsafe_gettype(comp::AbstractEDTComponent)::AbstractExtendedDataType
     return ExtendedDataType(GDAL.gdaledtcomponentgettype(comp))
 end
 
+"""
+    gettype(comp::AbstractEDTComponent)
+
+Return the data type of a component of a compound data type.
+"""
 function gettype(comp::AbstractEDTComponent)::AbstractExtendedDataType
     @assert !isnull(comp)
     return IExtendedDataType(GDAL.gdaledtcomponentgettype(comp))
