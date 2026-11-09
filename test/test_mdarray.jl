@@ -798,6 +798,18 @@ end
               ["numbers", "string"]
         @test AG.deleteattribute(mdarray, "string")
         @test AG.getname.(AG.getattributes(mdarray)) == ["numbers"]
+
+        # Attribute sizes are given in Julia order, for arrays and groups
+        for location in (mdarray, root)
+            AG.extendeddatatypecreate(Int16) do int16
+                AG.createattribute(location, "matrix", [2, 3], int16) do matrix
+                    @test AG.getdimensionssize(matrix) == (2, 3)
+                    @test AG.writeraw(matrix, zeros(UInt8, 6 * sizeof(Int16)))
+                    @test AG.readasraw(matrix) == zeros(UInt8, 12)
+                end
+            end
+            @test AG.deleteattribute(location, "matrix")
+        end
     end
 
     @testset "renaming and groups" begin

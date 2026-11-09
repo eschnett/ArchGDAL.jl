@@ -20,6 +20,12 @@ const ScalarAttributeType = Union{AbstractString,NumericAttributeType}
 const AttributeType =
     Union{ScalarAttributeType,AbstractVector{<:ScalarAttributeType}}
 
+"""
+    getdimensionssize(attribute::AbstractAttribute)
+
+Return the size of the attribute along each dimension, in Julia order; an
+empty tuple for a scalar attribute.
+"""
 function getdimensionssize(attribute::AbstractAttribute)::NTuple{<:Any,Int}
     @assert !isnull(attribute)
     count = Ref{Csize_t}()
@@ -29,6 +35,11 @@ function getdimensionssize(attribute::AbstractAttribute)::NTuple{<:Any,Int}
     return size
 end
 
+"""
+    readasraw(attribute::AbstractAttribute)
+
+Return the raw bytes of the attribute's value.
+"""
 function readasraw(attribute::AbstractAttribute)::AbstractVector{UInt8}
     @assert !isnull(attribute)
     count = Ref{Csize_t}()
@@ -38,6 +49,16 @@ function readasraw(attribute::AbstractAttribute)::AbstractVector{UInt8}
     return raw
 end
 
+"""
+    read(attribute::AbstractAttribute)
+
+Read the value of the attribute.
+
+### Returns
+A string or number for a scalar attribute, and a vector of strings or of
+numbers for a 1-dimensional attribute. Compound data types are not
+supported yet.
+"""
 function read(attribute::AbstractAttribute)::AttributeType
     @assert !isnull(attribute)
     rank = getdimensioncount(attribute)
@@ -81,7 +102,16 @@ function read(attribute::AbstractAttribute)::AttributeType
     end
 end
 
-function writerraw(
+"""
+    writeraw(attribute::AbstractAttribute, value::AbstractVector{UInt8})
+
+Write raw bytes as the value of the attribute. The number of bytes must
+match the attribute's data type and size.
+
+### Returns
+`true` on success.
+"""
+function writeraw(
     attribute::AbstractAttribute,
     value::AbstractVector{UInt8},
 )::Bool
@@ -89,6 +119,18 @@ function writerraw(
     return Bool(GDAL.gdalattributewriteraw(attribute, value, length(value)))
 end
 
+"""
+    write(attribute::AbstractAttribute, value)
+
+Write the value of the attribute.
+
+`value` can be a string or number (for a scalar attribute), or a vector of
+strings or of numbers (for a 1-dimensional attribute). Numbers are
+converted to the attribute's data type.
+
+### Returns
+`true` on success.
+"""
 function write(attribute::AbstractAttribute, value::AbstractString)::Bool
     @assert !isnull(attribute)
     return Bool(GDAL.gdalattributewritestring(attribute, value))
@@ -143,16 +185,32 @@ end
 
 ################################################################################
 
+"""
+    getname(attribute::AbstractAttribute)
+
+Return the name of the attribute.
+"""
 function getname(attribute::AbstractAttribute)::AbstractString
     @assert !isnull(attribute)
     return GDAL.gdalattributegetname(attribute)
 end
 
+"""
+    getfullname(attribute::AbstractAttribute)
+
+Return the full name of the attribute, including the path of its group or
+array, e.g. `"/array/attribute"`.
+"""
 function getfullname(attribute::AbstractAttribute)::AbstractString
     @assert !isnull(attribute)
     return GDAL.gdalattributegetfullname(attribute)
 end
 
+"""
+    gettotalelementscount(attribute::AbstractAttribute)
+
+Return the number of elements of the attribute (1 for a scalar attribute).
+"""
 function gettotalelementscount(attribute::AbstractAttribute)::Int64
     @assert !isnull(attribute)
     return Int64(GDAL.gdalattributegettotalelementscount(attribute))
@@ -163,6 +221,11 @@ function Base.length(attribute::AbstractAttribute)::Int
     return Int(gettotalelementscount(attribute))
 end
 
+"""
+    getdimensioncount(attribute::AbstractAttribute)
+
+Return the number of dimensions of the attribute (0 for a scalar attribute).
+"""
 function getdimensioncount(attribute::AbstractAttribute)::Int
     @assert !isnull(attribute)
     return Int(GDAL.gdalattributegetdimensioncount(attribute))
@@ -179,6 +242,11 @@ function unsafe_getdatatype(
     return ExtendedDataType(GDAL.gdalattributegetdatatype(attribute))
 end
 
+"""
+    getdatatype(attribute::AbstractAttribute)
+
+Return the data type of the attribute.
+"""
 function getdatatype(attribute::AbstractAttribute)::AbstractExtendedDataType
     @assert !isnull(attribute)
     return IExtendedDataType(GDAL.gdalattributegetdatatype(attribute))
@@ -188,6 +256,14 @@ end
 
 # processperchunk
 
+"""
+    rename!(attribute::AbstractAttribute, newname::AbstractString)
+
+Rename the attribute. Not all drivers support renaming.
+
+### Returns
+`true` on success.
+"""
 function rename!(attribute::AbstractAttribute, newname::AbstractString)::Bool
     @assert !isnull(attribute)
     return GDAL.gdalattributerename(attribute, newname)
